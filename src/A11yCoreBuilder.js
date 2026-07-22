@@ -2,6 +2,10 @@
 
 const { runa11yCoreInPage } = require('a11y-core');
 
+// See a11y-core's docs/OUTPUT_SCHEMA.md -- the only valid `outcome` values a
+// checksResults entry can carry.
+const VALID_OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
+
 /**
  * Playwright binding for a11y-core -- scans a real, already-rendered page.
  *
@@ -37,14 +41,23 @@ const { runa11yCoreInPage } = require('a11y-core');
  * Default off, so plain .analyze() keeps returning the single native result
  * object it always has.
  *
+ * By default `analyze()` returns every rule's outcome, including
+ * `pass`/`notApplicable` -- a11y-core's own deliberate "not a
+ * violations-only list" design (see a11y-core's docs/OUTPUT_SCHEMA.md).
+ * Opt in to a lighter payload with `.reportOnly(['fail', 'cantTell'])`,
+ * which post-filters `checksResults` by `outcome` (applied per-frame when
+ * combined with `.frames(true)`, since `checksResults` lives at
+ * `results.topFrame` / each `results.frames[i]` in that shape, not at the
+ * top level):
+ *
+ * const results = await new A11yCoreBuilder({ page })
+ *   .reportOnly(['fail', 'cantTell'])
+ *   .analyze();
+ *
  * Known v1 limitations (see ../ROADMAP.md for the full, prioritized list and
  * the reasoning behind each):
  * - No `elementRef` support -- occurrences carry a CSS selector + HTML
  *   snippet, not a live element handle.
- * - No `.reportOnly()`-style result filtering yet -- `analyze()` always
- *   returns every rule's outcome (a11y-core's own deliberate "not a
- *   violations-only list" design), which may be more verbose than axe
- *   consumers expect by default.
  */
 class A11yCoreBuilder {
   /**
@@ -66,6 +79,7 @@ class A11yCoreBuilder {
     this._tags = [];
     this._excludeTags = [];
     this._engineOptions = {};
+    this._reportOutcomes = null;
   }
 
   /**
@@ -112,6 +126,24 @@ class A11yCoreBuilder {
   /** Merge arbitrary engineOptions (locale, contrast.mode, policyContract, ...) -- see a11y-core's docs/ENGINE_OPTIONS.md. */
   options(partialEngineOptions) {
     this._engineOptions = { ...this._engineOptions, ...(partialEngineOptions || {}) };
+    return this;
+  }
+
+  /**
+   * Post-filter `checksResults` down to only the given outcomes (e.g.
+   * .reportOnly(['fail', 'cantTell']) to drop pass/notApplicable noise).
+   * Binding-layer only -- a11y-core itself always computes every rule's
+   * outcome; this just trims what analyze() hands back. Applied per-frame
+   * when combined with .frames(true).
+   */
+  reportOnly(outcomes) {
+    const list = Array.isArray(outcomes) ? outcomes : [outcomes];
+    for (const outcome of list) {
+      if (!VALID_OUTCOMES.includes(outcome)) {
+        throw new Error(`A11yCoreBuilder.reportOnly(): invalid outcome "${outcome}" -- must be one of ${VALID_OUTCOMES.join(', ')}.`);
+      }
+    }
+    this._reportOutcomes = list;
     return this;
   }
 
@@ -183,11 +215,11 @@ class A11yCoreBuilder {
     };
 
     if (!this._scanFrames) {
-      return runInFrame(this._page);
+      return this._applyReportOnly(await runInFrame(this._page));
     }
 
     const mainFrame = this._page.mainFrame();
-    const topFrame = await runInFrame(mainFrame);
+    const topFrame = this._applyReportOnly(await runInFrame(mainFrame));
 
     // page.frames() includes the main frame itself -- exclude it here since
     // it's already covered by topFrame above, so callers don't have to
@@ -196,7 +228,7 @@ class A11yCoreBuilder {
     const frames = [];
     for (const frame of subFrames) {
       try {
-        frames.push(await runInFrame(frame));
+        frames.push(this._applyReportOnly(await runInFrame(frame)));
       } catch (e) {
         // A frame can detach/navigate away mid-scan, or be a sandboxed
         // frame the browser blocks scripting in -- don't let one bad frame
@@ -209,6 +241,15 @@ class A11yCoreBuilder {
     }
 
     return { topFrame, frames };
+  }
+
+  /** Filters a single native result object's checksResults per .reportOnly(), if set. */
+  _applyReportOnly(result) {
+    if (!this._reportOutcomes || !Array.isArray(result.checksResults)) return result;
+    return {
+      ...result,
+      checksResults: result.checksResults.filter((r) => this._reportOutcomes.includes(r.outcome))
+    };
   }
 }
 
