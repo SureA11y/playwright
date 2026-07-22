@@ -42,7 +42,11 @@ Also built: `src/A11yCoreBuilder.d.ts` (re-exported via `src/index.d.ts`, wired 
 
 ## 4. Immediate next steps (pick up here)
 
-All five known gaps are now resolved (#1 cross-frame scanning, #2 element references, #3 result verbosity control, #5 xpath/ancestry addressing) except #4 (runtime custom-rule registration), which is a real `a11y-core` engine gap this binding can't address unilaterally -- see §3 above. TypeScript types are also done (§2). What's left is process/packaging, not features:
+All five known gaps are now resolved (#1 cross-frame scanning, #2 element references, #3 result verbosity control, #5 xpath/ancestry addressing) except #4 (runtime custom-rule registration), which is a real `a11y-core` engine gap this binding can't address unilaterally -- see §3 above. TypeScript types are also done (§2).
 
-1. Decide on **publishing**: npm org/scope name, whether to wait for `a11y-core` itself to publish first (this package's `file:` dependency needs to become a real version range before anyone else can `npm install` it).
-2. **CI**: no automated test run on push/PR yet -- worth adding once publishing is decided, so a broken `npm install` or test regression doesn't ship silently.
+What's left is process/packaging, not features -- and explicitly **deprioritized for now** (2026-07-22: working locally, not ready to invest in this yet):
+
+1. **CI**: no automated test run on push/PR. Non-trivial here specifically because `a11y-core` lives in a private Bitbucket repo (`file:../a11y-core` dependency), not GitHub -- a GitHub Actions workflow would need Bitbucket credentials wired in as a secret just to `npm install`. Revisit once that friction is worth paying down (e.g. once `a11y-core` publishes to npm and this becomes a normal registry dependency).
+2. **Publishing**: npm org/scope name, whether to wait for `a11y-core` itself to publish first (same `file:` dependency blocker as above -- needs a real version range before anyone else can `npm install` this).
+
+Since nothing feature-shaped is left on this list, a fresh session picking this up should ask what to focus on next rather than defaulting to #1/#2 above.
