@@ -131,3 +131,71 @@ test('A11yCoreBuilder: options() merges into engineOptions and is actually appli
     await browser.close();
   }
 });
+
+test('A11yCoreBuilder: frames(true) with no sub-frames returns { topFrame, frames: [] }', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><button></button></body></html>');
+
+    const results = await new A11yCoreBuilder({ page }).frames(true).analyze();
+
+    assert.ok(Array.isArray(results.topFrame.checksResults));
+    assert.ok(results.topFrame.checksResults.some((r) => r.ruleId === 'a11ycore-button-name-present' && r.outcome === 'fail'));
+    assert.deepStrictEqual(results.frames, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: frames(true) scans a sub-frame and keeps its findings separate from the top frame', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    // <iframe srcdoc> creates a real, distinct sub-frame with zero network
+    // dependency and fully deterministic content -- good for verifying the
+    // orchestration logic itself (topFrame vs. frames[], not double-counting).
+    await page.goto(
+      'data:text/html,<html><body>' +
+      '<button>Top button, has a name</button>' +
+      '<iframe srcdoc="%3Chtml%3E%3Cbody%3E%3Cimg src=x.png%3E%3C/body%3E%3C/html%3E"></iframe>' +
+      '</body></html>'
+    );
+    await page.waitForLoadState('networkidle').catch(() => {});
+
+    const results = await new A11yCoreBuilder({ page }).frames(true).analyze();
+
+    // Top frame has no img-alt-present issue (no <img> there at all) and no
+    // button-name-present failure (the button has real text).
+    const topButtonRule = results.topFrame.checksResults.find((r) => r.ruleId === 'a11ycore-button-name-present');
+    assert.strictEqual(topButtonRule.outcome, 'pass');
+
+    assert.strictEqual(results.frames.length, 1);
+    const frameImgRule = results.frames[0].checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present');
+    assert.strictEqual(frameImgRule.outcome, 'fail');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: frames(true) scans a genuinely cross-origin iframe (no a11y-core engine support needed for this -- see ../ROADMAP.md gap #1)', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    // example.org is IANA-reserved specifically for use in documentation/
+    // testing and is about as stable a real external dependency as exists --
+    // this is the exact page used to empirically verify the claim in
+    // ../ROADMAP.md that cross-origin frame scanning needs no engine work.
+    await page.goto('data:text/html,<html><body><iframe src="https://example.org/"></iframe></body></html>');
+    await page.waitForLoadState('networkidle').catch(() => {});
+
+    const results = await new A11yCoreBuilder({ page }).frames(true).analyze();
+
+    assert.strictEqual(results.frames.length, 1);
+    assert.ok(!results.frames[0].error, `Cross-origin frame scan should not error: ${results.frames[0].error}`);
+    assert.ok(Array.isArray(results.frames[0].checksResults));
+    assert.ok(results.frames[0].checksResults.length > 0);
+  } finally {
+    await browser.close();
+  }
+});
