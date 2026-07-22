@@ -18,6 +18,46 @@ const MY_ORG_CUSTOM_RULE = {
   }).toString()
 };
 
+// Same rule, but as a real, LIVE function -- used to prove
+// .withCustomRules() converts it to a source string itself, unlike the raw
+// .options({ customRules }) passthrough above, which requires the caller to
+// call .toString() themselves.
+const MY_ORG_CUSTOM_RULE_LIVE = {
+  id: 'my-org-custom-rule',
+  meta: { title: 'My custom rule', tags: ['custom'], defaultSeverity: 'serious' },
+  runInPage(ctx) {
+    const el = ctx.document.querySelector('.my-widget');
+    return el ? { outcome: 'fail', occurrences: [{ __node: el }] } : { outcome: 'notApplicable', occurrences: [] };
+  }
+};
+
+// A second, distinct rule ID -- used to prove withCustomRules() can register
+// more than one rule at once (array form) and accumulates across calls.
+const SECOND_CUSTOM_RULE = {
+  id: 'my-org-second-custom-rule',
+  meta: { title: 'My second custom rule', tags: ['custom'] },
+  runInPage(ctx) {
+    const el = ctx.document.querySelector('.my-other-widget');
+    return el ? { outcome: 'fail', occurrences: [{ __node: el }] } : { outcome: 'notApplicable', occurrences: [] };
+  }
+};
+
+// Exercises the optional `applicability` field -- also accepted as a live
+// function and converted the same way as runInPage. When applicability
+// returns false, a11y-core reports 'notApplicable' WITHOUT ever invoking
+// runInPage; runInPage here always reports 'pass' so the two outcomes are
+// unambiguous proof of which path ran.
+const CUSTOM_RULE_WITH_APPLICABILITY = {
+  id: 'my-org-conditional-custom-rule',
+  meta: { title: 'Conditional custom rule', tags: ['custom'] },
+  applicability(ctx) {
+    return !!ctx.document.querySelector('.applicability-gate');
+  },
+  runInPage() {
+    return { outcome: 'pass', occurrences: [] };
+  }
+};
+
 test('A11yCoreBuilder.analyze() scans a real page and returns a11y-core\'s native result shape', async () => {
   const browser = await chromium.launch();
   try {
@@ -371,6 +411,230 @@ test('A11yCoreBuilder: options({ customRules }) combined with reportOnly() -- th
   } finally {
     await browser.close();
   }
+});
+
+test('A11yCoreBuilder: withCustomRules() registers a runtime custom rule, converting a live runInPage function to a source string automatically', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><div class="my-widget"></div></body></html>');
+
+    // MY_ORG_CUSTOM_RULE_LIVE's runInPage is a real, live function -- unlike
+    // the raw .options({ customRules }) passthrough above, which requires a
+    // pre-stringified function, withCustomRules() must convert it itself.
+    const results = await new A11yCoreBuilder({ page })
+      .withCustomRules(MY_ORG_CUSTOM_RULE_LIVE)
+      .analyze();
+
+    const custom = results.checksResults.find((r) => r.ruleId === 'my-org-custom-rule');
+    assert.ok(custom, 'custom rule should appear in checksResults like a built-in rule');
+    assert.strictEqual(custom.outcome, 'fail');
+    assert.strictEqual(custom.occurrences[0].selector, 'html > body > div');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: withCustomRules() accepts an array to register multiple rules in one call', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(
+      'data:text/html,<html><body>' +
+      '<div class="my-widget"></div>' +
+      '<div class="my-other-widget"></div>' +
+      '</body></html>'
+    );
+
+    const results = await new A11yCoreBuilder({ page })
+      .withCustomRules([MY_ORG_CUSTOM_RULE_LIVE, SECOND_CUSTOM_RULE])
+      .analyze();
+
+    assert.strictEqual(results.checksResults.find((r) => r.ruleId === 'my-org-custom-rule').outcome, 'fail');
+    assert.strictEqual(results.checksResults.find((r) => r.ruleId === 'my-org-second-custom-rule').outcome, 'fail');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: withCustomRules() accumulates across repeated calls, like withRules()/withTags()', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(
+      'data:text/html,<html><body>' +
+      '<div class="my-widget"></div>' +
+      '<div class="my-other-widget"></div>' +
+      '</body></html>'
+    );
+
+    const results = await new A11yCoreBuilder({ page })
+      .withCustomRules(MY_ORG_CUSTOM_RULE_LIVE)
+      .withCustomRules(SECOND_CUSTOM_RULE) // adds a second rule, doesn't replace the first
+      .analyze();
+
+    assert.strictEqual(results.checksResults.find((r) => r.ruleId === 'my-org-custom-rule').outcome, 'fail');
+    assert.strictEqual(results.checksResults.find((r) => r.ruleId === 'my-org-second-custom-rule').outcome, 'fail');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: withCustomRules() composes with a raw options({ customRules }) call rather than clobbering it', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(
+      'data:text/html,<html><body>' +
+      '<div class="my-widget"></div>' +
+      '<div class="my-other-widget"></div>' +
+      '</body></html>'
+    );
+
+    const results = await new A11yCoreBuilder({ page })
+      .options({ customRules: [MY_ORG_CUSTOM_RULE] })
+      .withCustomRules(SECOND_CUSTOM_RULE)
+      .analyze();
+
+    assert.strictEqual(results.checksResults.find((r) => r.ruleId === 'my-org-custom-rule').outcome, 'fail');
+    assert.strictEqual(results.checksResults.find((r) => r.ruleId === 'my-org-second-custom-rule').outcome, 'fail');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: withCustomRules() runs the rule in every frame when combined with frames(true)', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(
+      'data:text/html,<html><body>' +
+      '<div class="my-widget"></div>' +
+      '<iframe srcdoc="%3Chtml%3E%3Cbody%3E%3Cdiv class=my-widget%3E%3C/div%3E%3C/body%3E%3C/html%3E"></iframe>' +
+      '</body></html>'
+    );
+    await page.waitForLoadState('networkidle').catch(() => {});
+
+    const results = await new A11yCoreBuilder({ page })
+      .frames(true)
+      .withCustomRules(MY_ORG_CUSTOM_RULE_LIVE)
+      .analyze();
+
+    assert.strictEqual(results.topFrame.checksResults.find((r) => r.ruleId === 'my-org-custom-rule').outcome, 'fail');
+    assert.strictEqual(results.frames[0].checksResults.find((r) => r.ruleId === 'my-org-custom-rule').outcome, 'fail');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: withCustomRules() is filtered the same as a built-in rule when combined with reportOnly()', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><div class="my-widget"></div></body></html>');
+
+    const results = await new A11yCoreBuilder({ page })
+      .withCustomRules(MY_ORG_CUSTOM_RULE_LIVE)
+      .reportOnly(['fail'])
+      .analyze();
+
+    assert.ok(results.checksResults.some((r) => r.ruleId === 'my-org-custom-rule'));
+    assert.ok(results.checksResults.every((r) => r.outcome === 'fail'));
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: withCustomRules() converts a live applicability function too, and respects its true/false result', async () => {
+  const browser = await chromium.launch();
+  try {
+    const browserPage1 = await browser.newPage();
+    await browserPage1.goto('data:text/html,<html><body><div class="applicability-gate"></div></body></html>');
+    const applicableResults = await new A11yCoreBuilder({ page: browserPage1 })
+      .withCustomRules(CUSTOM_RULE_WITH_APPLICABILITY)
+      .analyze();
+    assert.strictEqual(
+      applicableResults.checksResults.find((r) => r.ruleId === 'my-org-conditional-custom-rule').outcome,
+      'pass'
+    );
+    await browserPage1.close();
+
+    const browserPage2 = await browser.newPage();
+    await browserPage2.goto('data:text/html,<html><body></body></html>');
+    const notApplicableResults = await new A11yCoreBuilder({ page: browserPage2 })
+      .withCustomRules(CUSTOM_RULE_WITH_APPLICABILITY)
+      .analyze();
+    assert.strictEqual(
+      notApplicableResults.checksResults.find((r) => r.ruleId === 'my-org-conditional-custom-rule').outcome,
+      'notApplicable'
+    );
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: withCustomRules() still accepts an already-stringified runInPage, same as the raw options() passthrough', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><div class="my-widget"></div></body></html>');
+
+    const results = await new A11yCoreBuilder({ page })
+      .withCustomRules(MY_ORG_CUSTOM_RULE) // runInPage is already a string here
+      .analyze();
+
+    assert.strictEqual(results.checksResults.find((r) => r.ruleId === 'my-org-custom-rule').outcome, 'fail');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: withCustomRules() throws synchronously on a missing/empty id, instead of failing silently deep in the page', () => {
+  assert.throws(
+    () => new A11yCoreBuilder({ page: { evaluate: () => {} } }).withCustomRules({ runInPage: () => ({}) }),
+    /requires a non-empty string `id`/
+  );
+  assert.throws(
+    () => new A11yCoreBuilder({ page: { evaluate: () => {} } }).withCustomRules({ id: '', runInPage: () => ({}) }),
+    /requires a non-empty string `id`/
+  );
+});
+
+test('A11yCoreBuilder: withCustomRules() throws synchronously when runInPage is missing or not a function/string', () => {
+  assert.throws(
+    () => new A11yCoreBuilder({ page: { evaluate: () => {} } }).withCustomRules({ id: 'no-run-fn' }),
+    /requires a `runInPage` function or function-source string/
+  );
+  assert.throws(
+    () => new A11yCoreBuilder({ page: { evaluate: () => {} } }).withCustomRules({ id: 'bad-run-fn', runInPage: 123 }),
+    /requires a `runInPage` function or function-source string/
+  );
+  assert.throws(
+    () => new A11yCoreBuilder({ page: { evaluate: () => {} } }).withCustomRules({ id: 'empty-run-fn', runInPage: '' }),
+    /requires a `runInPage` function or function-source string/
+  );
+});
+
+test('A11yCoreBuilder: withCustomRules() throws synchronously when applicability is provided but not a function/string', () => {
+  assert.throws(
+    () => new A11yCoreBuilder({ page: { evaluate: () => {} } }).withCustomRules({
+      id: 'bad-applicability',
+      runInPage: () => ({}),
+      applicability: 123
+    }),
+    /`applicability` must be a function or function-source string/
+  );
+});
+
+test('A11yCoreBuilder: withCustomRules() rejects the whole call (no partial registration) when one descriptor in an array is invalid', () => {
+  const builder = new A11yCoreBuilder({ page: { evaluate: () => {} } });
+  assert.throws(
+    () => builder.withCustomRules([MY_ORG_CUSTOM_RULE_LIVE, { id: '', runInPage: () => ({}) }]),
+    /requires a non-empty string `id`/
+  );
+  // Confirms the valid entry earlier in the array wasn't partially pushed
+  // onto internal state before the invalid one threw.
+  assert.strictEqual(builder._customRules.length, 0);
 });
 
 test('A11yCoreBuilder: frames(true) with no sub-frames returns { topFrame, frames: [] }', async () => {

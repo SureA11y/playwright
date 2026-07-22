@@ -50,7 +50,7 @@ Also see `examples/basic-scan.js` for a runnable script (`npm run example -- <ur
 
 `withTags()`/`disableRules()` above have counterparts: `.withRules([...])` (only run these specific rule IDs) and `.disableTags([...])` (never run rules carrying any of these tags). All four compose the same way axe's `runOnly`/`disableRules` do, with one non-obvious rule worth knowing: a "disable" always wins over a "with" on the same ID/tag (e.g. `.withRules(['a']).disableRules(['a'])` drops `'a'` entirely), and combining `.withRules()` **and** `.withTags()` together requires a rule to satisfy *both* (a11y-core's default `includeMode: 'and'` — see `../a11y-core/docs/ENGINE_OPTIONS.md`), not either one.
 
-**Create one builder per scan.** `A11yCoreBuilder` is a mutable object with no reset between `.analyze()` calls — `include()`/`exclude()`/`withRules()`/`disableRules()`/`withTags()`/`disableTags()`/`options()` all push onto or merge into internal state that persists for the instance's lifetime. Calling one of them again before a second `.analyze()` call *accumulates* on top of the first scan's scope rather than replacing it (this is exactly what makes "call `.include()` several times for one scan," above, work — the same accumulation just also applies across separate scans if you reuse an instance). `.reportOnly()`/`.frames()`/`.elementRef()` are the exception: each call replaces the previous value instead of merging with it.
+**Create one builder per scan.** `A11yCoreBuilder` is a mutable object with no reset between `.analyze()` calls — `include()`/`exclude()`/`withRules()`/`disableRules()`/`withTags()`/`disableTags()`/`options()`/`withCustomRules()` all push onto or merge into internal state that persists for the instance's lifetime. Calling one of them again before a second `.analyze()` call *accumulates* on top of the first scan's scope rather than replacing it (this is exactly what makes "call `.include()` several times for one scan," above, work — the same accumulation just also applies across separate scans if you reuse an instance). `.reportOnly()`/`.frames()`/`.elementRef()` are the exception: each call replaces the previous value instead of merging with it.
 
 This binding works against all three Playwright engines, not just Chromium — verified with real Firefox and WebKit runs, see `tests/cross-browser.test.js`.
 
@@ -133,27 +133,37 @@ Each `ElementHandle` holds a browser-side reference until garbage collected or e
 
 ### Registering a custom rule at runtime
 
-`a11y-core` supports registering additional rules per-scan via `engineOptions.customRules` — this binding has no dedicated builder method for it yet, but the existing `.options()` passthrough already forwards it, so it works today:
+`a11y-core` supports registering additional rules per-scan via `engineOptions.customRules` (axe's `configure({ rules })` equivalent). Use `.withCustomRules()` to register one:
 
 ```js
 const results = await new A11yCoreBuilder({ page })
-  .options({
-    customRules: [{
-      id: 'my-org-custom-rule',
-      meta: { title: 'My custom rule', tags: ['custom'], defaultSeverity: 'serious' },
-      // Must be a function-source STRING here, not a live function --
-      // engineOptions crosses a page.evaluate() JSON boundary that can't
-      // carry a live Function reference, only a string it can reconstruct.
-      runInPage: (function (ctx) {
-        const el = ctx.document.querySelector('.my-widget');
-        return el ? { outcome: 'fail', occurrences: [{ __node: el }] } : { outcome: 'notApplicable', occurrences: [] };
-      }).toString()
-    }]
+  .withCustomRules({
+    id: 'my-org-custom-rule',
+    meta: { title: 'My custom rule', tags: ['custom'], defaultSeverity: 'serious' },
+    // A real, live function is fine here -- .withCustomRules() converts it
+    // to a function-source string for you (see below for why that matters).
+    runInPage(ctx) {
+      const el = ctx.document.querySelector('.my-widget');
+      return el ? { outcome: 'fail', occurrences: [{ __node: el }] } : { outcome: 'notApplicable', occurrences: [] };
+    }
   })
   .analyze();
 ```
 
 A custom rule descriptor is the same shape as one of a11y-core's own internal rule modules (`{ id, meta, runInPage, applicability?, data? }`) — see `../a11y-core/docs/ENGINE_OPTIONS.md` for the full contract. Results appear in `checksResults` exactly like a built-in rule's, including automatic `selector`/`html`/`structuralPath` fill-in. Registered per-scan only (nothing persists between calls or shows up in any catalog listing), and a custom rule whose `id` collides with a built-in one overrides it for that scan.
+
+Pass an array to register several at once, or call `.withCustomRules()` again to add more — like `.withRules()`/`.withTags()`, it accumulates rather than replacing what was already registered:
+
+```js
+const results = await new A11yCoreBuilder({ page })
+  .withCustomRules([firstRule, secondRule])
+  .withCustomRules(thirdRule) // adds a third, doesn't replace the first two
+  .analyze();
+```
+
+**Why `.withCustomRules()` instead of the raw `.options({ customRules })` passthrough** (still supported, and composes with this method if you use both): `runInPage`/`applicability` must reach the page as a function-source *string*, not a live `Function` — a Playwright `page.evaluate()` argument crosses a JSON boundary that can't carry a live function reference, only a string a11y-core can reconstruct with `new Function` on the page side. Passing a raw live function via `.options()` directly would silently fail to serialize; `.withCustomRules()` calls `.toString()` on a live function for you, so you can write a normal function and not have to remember that constraint yourself. A string is still accepted as-is if you already have one.
+
+Invalid input (a missing/empty `id`, or a `runInPage`/`applicability` that's neither a function nor a non-empty string) throws immediately from `.withCustomRules()` itself, rather than surfacing later as a silently-skipped rule deep inside the page — easier to catch during development. (Note: a *raw* `.options({ customRules })` call bypasses this check entirely and defers to a11y-core's own engine-side behavior, which silently skips an invalid descriptor rather than throwing — see `../a11y-core/docs/ENGINE_OPTIONS.md`.)
 
 ### Element addressing beyond a CSS selector
 
