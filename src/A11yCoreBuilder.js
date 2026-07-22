@@ -54,10 +54,13 @@ const VALID_OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
  *   .reportOnly(['fail', 'cantTell'])
  *   .analyze();
  *
- * Known v1 limitations (see ../ROADMAP.md for the full, prioritized list and
- * the reasoning behind each):
- * - No `elementRef` support -- occurrences carry a CSS selector + HTML
- *   snippet, not a live element handle.
+ * Opt in to a live `ElementHandle` per occurrence (instead of just a CSS
+ * selector string) with `.elementRef(true)`, so you can act on the flagged
+ * element directly rather than re-resolving its selector yourself:
+ *
+ * const results = await new A11yCoreBuilder({ page }).elementRef(true).analyze();
+ * const [firstFail] = results.checksResults.filter(r => r.outcome === 'fail');
+ * await firstFail.occurrences[0].elementHandle.screenshot({ path: 'flagged.png' });
  */
 class A11yCoreBuilder {
   /**
@@ -80,6 +83,7 @@ class A11yCoreBuilder {
     this._excludeTags = [];
     this._engineOptions = {};
     this._reportOutcomes = null;
+    this._elementRef = false;
   }
 
   /**
@@ -148,6 +152,27 @@ class A11yCoreBuilder {
   }
 
   /**
+   * Opt in to resolving each fail/cantTell occurrence's `selector` to a live
+   * Playwright `ElementHandle` (attached as `occurrence.elementHandle`), so
+   * callers can `.click()`/`.screenshot()`/`.highlight()` the flagged
+   * element directly instead of re-resolving `occurrence.selector`
+   * themselves (fragile if the DOM shifted between the scan and when you
+   * act on it). Default off -- resolving a handle per occurrence costs a
+   * real page query, so this stays opt-in. Uses `<page-or-frame>.$()`
+   * rather than `evaluateHandle` since a plain `ElementHandle` is all
+   * callers need. Combines with `.frames(true)`: each frame's occurrences
+   * are resolved against that frame's own document, not the top page's.
+   */
+  elementRef(enabled = true) {
+    this._elementRef = !!enabled;
+    return this;
+  }
+
+  // Note: not every occurrence resolves to one element -- a page-wide
+  // finding (e.g. some manual/cantTell rules) can carry `selector: ""`, in
+  // which case `occurrence.elementHandle` is `null` rather than a handle.
+
+  /**
    * Opt in to also scanning every sub-frame on the page (including
    * cross-origin iframes -- see this file's own header comment for why
    * that needs no a11y-core engine support). Default off; when off,
@@ -206,12 +231,13 @@ class A11yCoreBuilder {
     // and .url() shape, so this works unchanged for either.
     const runInFrame = async (frameOrPage) => {
       const frameUrl = this._url || (typeof frameOrPage.url === 'function' ? frameOrPage.url() : null);
-      return frameOrPage.evaluate(wrapperFn, {
+      const result = await frameOrPage.evaluate(wrapperFn, {
         url: frameUrl,
         contextSelector,
         engineOptions,
         runOnly
       });
+      return this._elementRef ? this._attachElementRefs(frameOrPage, result) : result;
     };
 
     if (!this._scanFrames) {
@@ -250,6 +276,29 @@ class A11yCoreBuilder {
       ...result,
       checksResults: result.checksResults.filter((r) => this._reportOutcomes.includes(r.outcome))
     };
+  }
+
+  /**
+   * Resolves occurrence.selector to a live ElementHandle for every
+   * fail/cantTell occurrence, scoped to frameOrPage's own document (a
+   * Playwright Page and Frame both expose the same .$(selector) shape).
+   * Mutates and returns the same result object -- it's a fresh object from
+   * this scan, not shared external state.
+   */
+  async _attachElementRefs(frameOrPage, result) {
+    if (!Array.isArray(result.checksResults)) return result;
+    for (const check of result.checksResults) {
+      if (!Array.isArray(check.occurrences) || !check.occurrences.length) continue;
+      for (const occurrence of check.occurrences) {
+        // Most occurrences carry a concrete element selector, but a page-wide
+        // finding with no single target element (e.g. some `manual`/cantTell
+        // rules) can carry "" -- not every occurrence resolves to one element,
+        // so leave elementHandle null rather than passing "" to .$() (which
+        // throws, it's not a valid CSS selector).
+        occurrence.elementHandle = occurrence.selector ? await frameOrPage.$(occurrence.selector) : null;
+      }
+    }
+    return result;
   }
 }
 

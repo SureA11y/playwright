@@ -72,6 +72,20 @@ console.log(results.checksResults); // only fail/cantTell entries, pass/notAppli
 
 Valid outcome values are `'pass'`, `'fail'`, `'cantTell'`, `'notApplicable'`. This is pure binding-layer filtering — a11y-core itself still computes every rule; nothing about the scan itself changes. Combines with `.frames(true)`: the filter is applied to `results.topFrame` and each entry of `results.frames` independently.
 
+### Getting a live element handle, not just a selector string
+
+By default each occurrence carries a CSS selector + HTML snippet, not a live reference to the element. Opt in to a real Playwright `ElementHandle` with `.elementRef(true)`:
+
+```js
+const results = await new A11yCoreBuilder({ page }).elementRef(true).analyze();
+
+const [failing] = results.checksResults.filter(r => r.outcome === 'fail');
+await failing.occurrences[0].elementHandle.screenshot({ path: 'flagged.png' });
+await failing.occurrences[0].elementHandle.click();
+```
+
+This resolves `occurrence.selector` to an `ElementHandle` (via `page.$()`/`frame.$()`) instead of leaving you to re-resolve a possibly-stale selector string yourself. Default off — resolving a handle per occurrence is a real page query per occurrence, so it costs more than a plain `.analyze()`. Combines with `.frames(true)`: each frame's occurrences resolve against that frame's own document. Not every occurrence has one target element — a page-wide finding (some `manual`/`cantTell` rules) can carry `selector: ""`, in which case `occurrence.elementHandle` is `null` rather than a handle.
+
 ## Status and what's next
 
 See `ROADMAP.md` — it documents what's built, what's verified, the known gaps vs. axe-core (prioritized, with reasoning), and exactly what to pick up next. Read it before starting new work here, especially in a fresh chat session that hasn't seen how this project came to exist.
