@@ -1,0 +1,20 @@
+{
+  "name": "a11y-core-playwright",
+  "version": "0.1.0",
+  "description": "Playwright binding for a11y-core -- scan real, live-rendered pages for accessibility issues.",
+  "main": "src/index.js",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.13.0"
+  },
+  "dependencies": {
+    "a11y-core": "file:../a11y-core"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.1"
+  },
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.js\"",
+    "example": "node examples/basic-scan.js"
+  }
+}
