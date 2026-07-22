@@ -6,6 +6,40 @@ const { runa11yCoreInPage } = require('a11y-core');
 // checksResults entry can carry.
 const VALID_OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
 
+// a11y-core revives a customRules runInPage/applicability STRING back into a
+// function via `new Function('return (' + value + ')')()` (see its
+// src/core/dom-runner.js) -- the exact same mechanism used here, in Node,
+// purely to verify a candidate string will actually reconstruct before it
+// ever crosses the page.evaluate() boundary.
+function canReconstructAsFunction(src) {
+  try {
+    // eslint-disable-next-line no-new-func
+    return typeof new Function('return (' + src + ')')() === 'function';
+  } catch (e) {
+    return false;
+  }
+}
+
+// Converts a live function to a source string a11y-core can revive on the
+// page side. Function.prototype.toString() on an ES6 method-shorthand
+// property (e.g. `{ runInPage(ctx) { ... } }`, the idiomatic way to write
+// one of these descriptors, including `async`/generator variants) omits the
+// `function` keyword entirely -- so the *exact same* revival mechanism
+// a11y-core uses can't parse it back as a standalone expression. Verified
+// with `canReconstructAsFunction` above (real check, not a regex guess at
+// the syntax) and patched by re-adding `function ` when needed.
+function toReconstructableSource(fn) {
+  const direct = fn.toString();
+  if (canReconstructAsFunction(direct)) return direct;
+  const patched = direct.replace(/^(async\s+)?(\*\s*)?/, '$1function ');
+  if (canReconstructAsFunction(patched)) return patched;
+  // Some other shape neither form can reconstruct (e.g. a computed method
+  // name) -- hand back the plain toString() anyway; a11y-core's own revival
+  // will skip it the same way it always has for an unreconstructable
+  // descriptor, rather than this method inventing a different failure mode.
+  return direct;
+}
+
 /**
  * Playwright binding for a11y-core -- scans a real, already-rendered page.
  *
@@ -62,16 +96,36 @@ const VALID_OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
  * const [firstFail] = results.checksResults.filter(r => r.outcome === 'fail');
  * await firstFail.occurrences[0].elementHandle.screenshot({ path: 'flagged.png' });
  *
+ * Register your own rule(s) for just this scan with
+ * `.withCustomRules([...])` (a11y-core's `engineOptions.customRules`
+ * escape hatch, axe's `configure({ rules })` equivalent -- see
+ * a11y-core's docs/ENGINE_OPTIONS.md). Pass a real, live `runInPage`/
+ * `applicability` function -- unlike the raw `.options({ customRules })`
+ * passthrough, this method converts them to the function-source string
+ * a11y-core needs on this side of the page.evaluate() JSON boundary for
+ * you, so you don't have to remember to call .toString() yourself:
+ *
+ * const results = await new A11yCoreBuilder({ page })
+ *   .withCustomRules({
+ *     id: 'my-org-custom-rule',
+ *     meta: { title: 'My custom rule', tags: ['custom'] },
+ *     runInPage(ctx) {
+ *       const el = ctx.document.querySelector('.my-widget');
+ *       return el ? { outcome: 'fail', occurrences: [{ __node: el }] } : { outcome: 'notApplicable', occurrences: [] };
+ *     }
+ *   })
+ *   .analyze();
+ *
  * Create one builder per scan. This is a mutable object with no reset
  * between analyze() calls: include()/exclude()/withRules()/disableRules()/
- * withTags()/disableTags()/options() all push onto or merge into internal
- * state that persists for the instance's lifetime, so calling one of them
- * again before a second analyze() call accumulates on top of the first
- * scan's scope rather than replacing it (intentional for "call include()
- * several times for one scan" -- see above -- but a footgun if you hold one
- * instance across multiple assertions). reportOnly()/frames()/elementRef()
- * are the exception: each call replaces the previous value rather than
- * merging with it.
+ * withTags()/disableTags()/options()/withCustomRules() all push onto or
+ * merge into internal state that persists for the instance's lifetime, so
+ * calling one of them again before a second analyze() call accumulates on
+ * top of the first scan's scope rather than replacing it (intentional for
+ * "call include() several times for one scan" -- see above -- but a footgun
+ * if you hold one instance across multiple assertions).
+ * reportOnly()/frames()/elementRef() are the exception: each call replaces
+ * the previous value rather than merging with it.
  */
 class A11yCoreBuilder {
   /**
@@ -95,6 +149,7 @@ class A11yCoreBuilder {
     this._engineOptions = {};
     this._reportOutcomes = null;
     this._elementRef = false;
+    this._customRules = [];
   }
 
   /**
@@ -141,6 +196,67 @@ class A11yCoreBuilder {
   /** Merge arbitrary engineOptions (locale, contrast.mode, policyContract, ...) -- see a11y-core's docs/ENGINE_OPTIONS.md. */
   options(partialEngineOptions) {
     this._engineOptions = { ...this._engineOptions, ...(partialEngineOptions || {}) };
+    return this;
+  }
+
+  /**
+   * Register one or more custom rules for just this scan (a11y-core's
+   * engineOptions.customRules escape hatch -- see a11y-core's
+   * docs/ENGINE_OPTIONS.md -- axe's configure({ rules }) equivalent). A
+   * descriptor is { id, meta?, runInPage, applicability?, data? }, the same
+   * shape as an internal a11y-core rule module's own export. Call multiple
+   * times to register several rules across one scan (accumulates, same as
+   * withRules()/withTags(), rather than replacing -- see this class's own
+   * header comment on mutability).
+   *
+   * Unlike the raw `.options({ customRules })` passthrough, `runInPage`/
+   * `applicability` may be passed as real, live functions here -- this
+   * method converts each to a function-source string itself, since a
+   * Playwright page.evaluate() argument crosses a JSON boundary that cannot
+   * carry a live Function reference (a11y-core reconstructs the string back
+   * into a function via `new Function` on the page side). A string is still
+   * accepted as-is for callers who already have one. Plain
+   * Function.prototype.toString() isn't quite enough on its own: an ES6
+   * method-shorthand property (`{ runInPage(ctx) { ... } }` -- the idiomatic
+   * way to write one of these, and what every example in this file's own
+   * docs/tests uses) stringifies *without* the `function` keyword, which
+   * a11y-core's own `new Function('return (' + value + ')')()` revival
+   * can't parse back as a standalone expression. This method verifies
+   * reconstructability the same way a11y-core will and patches that specific
+   * case automatically, so you don't need to know about it.
+   *
+   * A descriptor whose `id` collides with a built-in rule overrides it for
+   * that scan only (a11y-core's own semantics, matching axe's configure()
+   * override behavior) -- nothing here persists past this one analyze() call
+   * or mutates a11y-core's static rule catalog.
+   */
+  withCustomRules(rules) {
+    const list = Array.isArray(rules) ? rules : [rules];
+
+    // Validate the whole batch before normalizing/pushing any of it, so one
+    // invalid descriptor later in the array can't leave an earlier valid one
+    // partially registered -- same all-or-nothing spirit as reportOnly()'s
+    // own validate-then-assign shape above.
+    for (const rule of list) {
+      if (!rule || typeof rule.id !== 'string' || !rule.id) {
+        throw new Error('A11yCoreBuilder.withCustomRules(): each custom rule descriptor requires a non-empty string `id`.');
+      }
+      if (typeof rule.runInPage !== 'function' && (typeof rule.runInPage !== 'string' || !rule.runInPage)) {
+        throw new Error(`A11yCoreBuilder.withCustomRules(): custom rule "${rule.id}" requires a \`runInPage\` function or function-source string.`);
+      }
+      if (rule.applicability !== undefined && typeof rule.applicability !== 'function' && (typeof rule.applicability !== 'string' || !rule.applicability)) {
+        throw new Error(`A11yCoreBuilder.withCustomRules(): custom rule "${rule.id}"'s \`applicability\` must be a function or function-source string when provided.`);
+      }
+    }
+
+    for (const rule of list) {
+      const normalized = {
+        ...rule,
+        runInPage: typeof rule.runInPage === 'function' ? toReconstructableSource(rule.runInPage) : rule.runInPage
+      };
+      if (typeof rule.applicability === 'function') normalized.applicability = toReconstructableSource(rule.applicability);
+      this._customRules.push(normalized);
+    }
     return this;
   }
 
@@ -205,6 +321,14 @@ class A11yCoreBuilder {
       : null;
 
     const engineOptions = { ...this._engineOptions };
+    if (this._customRules.length) {
+      // Concatenated with, not replaced by, any customRules already present
+      // via a raw .options({ customRules }) call, so the two ways of
+      // registering a custom rule compose rather than one silently
+      // clobbering the other.
+      const existing = Array.isArray(this._engineOptions.customRules) ? this._engineOptions.customRules : [];
+      engineOptions.customRules = existing.concat(this._customRules);
+    }
     if (this._excludeSelectors.length) {
       engineOptions.excludeSelectors = this._excludeSelectors;
     }

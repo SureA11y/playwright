@@ -137,6 +137,30 @@ export interface A11yCoreMultiFrameResult {
   frames: Array<A11yCoreResult | A11yCoreFrameError>;
 }
 
+/**
+ * A runtime-registered rule descriptor for `.withCustomRules()` -- the same
+ * shape as an internal a11y-core rule module's own export (see a11y-core's
+ * docs/ENGINE_OPTIONS.md). `runInPage`/`applicability` may be passed as
+ * either a real function or a function-source string -- `.withCustomRules()`
+ * converts a live function to its source string for you, since it must
+ * cross a page.evaluate() JSON boundary that cannot carry a live Function
+ * reference.
+ */
+export interface CustomRuleDescriptor {
+  id: string;
+  meta?: {
+    title?: string;
+    description?: string;
+    tags?: string[];
+    defaultSeverity?: Severity;
+    defaultConfidence?: Confidence;
+    [key: string]: unknown;
+  };
+  runInPage: ((ctx: unknown) => unknown) | string;
+  applicability?: ((ctx: unknown) => boolean) | string;
+  data?: Record<string, unknown>;
+}
+
 export class A11yCoreBuilder {
   /**
    * @param opts.page A Playwright Page, already navigated to and settled at
@@ -158,6 +182,8 @@ export class A11yCoreBuilder {
   disableRules(ruleIds: string | string[]): this;
   /** Merge arbitrary engineOptions (locale, contrast.mode, policyContract, ...). */
   options(partialEngineOptions: Record<string, unknown>): this;
+  /** Register one or more custom rules for just this scan. Call multiple times to accumulate. */
+  withCustomRules(rules: CustomRuleDescriptor | CustomRuleDescriptor[]): this;
   /** Post-filter checksResults down to only the given outcomes. */
   reportOnly(outcomes: Outcome | Outcome[]): this;
   /** Opt in to also scanning every sub-frame on the page (including cross-origin iframes). */
