@@ -75,6 +75,58 @@ test('A11yCoreBuilder: include() called twice scans the union of both regions', 
   }
 });
 
+test('A11yCoreBuilder: scoping methods (include/exclude/withRules/etc.) accumulate across analyze() calls on the same instance -- create one builder per scan', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(
+      'data:text/html,<html><body>' +
+      '<section id="a"><img src="x.png"></section>' +
+      '<section id="b"><img src="y.png"></section>' +
+      '</body></html>'
+    );
+
+    // The builder is a mutable object with no reset between analyze() calls
+    // -- include()/exclude()/withRules()/disableRules()/withTags()/
+    // disableTags()/options() all push onto or merge into internal arrays/
+    // objects that persist for the instance's lifetime. This is intentional
+    // for "call include() multiple times within ONE scan" (see the test
+    // above), but the same accumulation applies across separate analyze()
+    // calls if you reuse an instance -- documented here so it's a known,
+    // tested behavior rather than a silent surprise for anyone holding a
+    // builder across multiple assertions. See README.md's own note.
+    const builder = new A11yCoreBuilder({ page });
+    const first = await builder.include('#a').analyze();
+    const second = await builder.include('#b').analyze(); // scope is now #a AND #b, not just #b
+
+    const firstRule = first.checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present');
+    const secondRule = second.checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present');
+    assert.deepStrictEqual(firstRule.occurrences.map((o) => o.selector), ['#a > img']);
+    assert.deepStrictEqual(secondRule.occurrences.map((o) => o.selector), ['#a > img', '#b > img']);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: reportOnly()/frames()/elementRef() overwrite on repeated calls, unlike the accumulating scoping methods above', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><button></button></body></html>');
+
+    const builder = new A11yCoreBuilder({ page }).reportOnly(['fail']);
+    await builder.analyze();
+    // Calling reportOnly() again REPLACES the previous outcomes list rather
+    // than merging with it -- unlike include()/withRules()/etc. above.
+    const results = await builder.reportOnly(['pass']).analyze();
+
+    assert.ok(results.checksResults.length > 0);
+    assert.ok(results.checksResults.every((r) => r.outcome === 'pass'));
+  } finally {
+    await browser.close();
+  }
+});
+
 test('A11yCoreBuilder: exclude() skips elements inside the excluded subtree', async () => {
   const browser = await chromium.launch();
   try {

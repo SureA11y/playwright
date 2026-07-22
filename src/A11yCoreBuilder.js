@@ -61,6 +61,17 @@ const VALID_OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
  * const results = await new A11yCoreBuilder({ page }).elementRef(true).analyze();
  * const [firstFail] = results.checksResults.filter(r => r.outcome === 'fail');
  * await firstFail.occurrences[0].elementHandle.screenshot({ path: 'flagged.png' });
+ *
+ * Create one builder per scan. This is a mutable object with no reset
+ * between analyze() calls: include()/exclude()/withRules()/disableRules()/
+ * withTags()/disableTags()/options() all push onto or merge into internal
+ * state that persists for the instance's lifetime, so calling one of them
+ * again before a second analyze() call accumulates on top of the first
+ * scan's scope rather than replacing it (intentional for "call include()
+ * several times for one scan" -- see above -- but a footgun if you hold one
+ * instance across multiple assertions). reportOnly()/frames()/elementRef()
+ * are the exception: each call replaces the previous value rather than
+ * merging with it.
  */
 class A11yCoreBuilder {
   /**
