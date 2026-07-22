@@ -168,3 +168,13 @@ export class A11yCoreBuilder {
   /** Runs the scan. Returns { topFrame, frames } instead of a single result when .frames(true) was used. */
   analyze(): Promise<A11yCoreResult | A11yCoreMultiFrameResult>;
 }
+
+/**
+ * Formats a checksResults array into a short, human-readable block -- one
+ * entry per occurrence, not per rule. Meant for an assertion library's
+ * failure-message parameter, e.g.
+ * `expect(results.checksResults, formatFailures(results.checksResults)).toEqual([])`.
+ * Deliberately framework-agnostic -- no dependency on any particular
+ * `expect` implementation.
+ */
+export function formatFailures(checksResults: CheckResult[], opts?: { outcomes?: Outcome[] }): string;

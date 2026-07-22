@@ -53,18 +53,33 @@ The pattern above works unchanged inside a real `@playwright/test` test (this is
 
 ```js
 const { test, expect } = require('@playwright/test');
-const { A11yCoreBuilder } = require('a11y-core-playwright');
+const { A11yCoreBuilder, formatFailures } = require('a11y-core-playwright');
 
 test('page has no accessibility violations', async ({ page }) => {
   await page.goto('https://example.com/');
 
   const results = await new A11yCoreBuilder({ page }).reportOnly(['fail']).analyze();
 
-  expect(results.checksResults).toEqual([]);
+  expect(results.checksResults, formatFailures(results.checksResults)).toEqual([]);
 });
 ```
 
-See `examples/playwright-test-example.spec.js` for a fuller, runnable version (`npm run example:e2e`) — one test proving real violations get caught (unlabeled button, missing `alt`), one proving a well-formed page passes cleanly, and a loud failure message that names the broken rule(s) instead of a bare `toEqual` diff.
+See `examples/playwright-test-example.spec.js` for a fuller, runnable version (`npm run example:e2e`) — one test proving real violations get caught (unlabeled button, missing `alt`), one proving a well-formed page passes cleanly.
+
+### Readable console/CI output on failure
+
+`expect(x).toEqual([])` alone gets you a *working* gate, but the failure message is a raw, deeply-nested object diff — hundreds of lines for a handful of violations. `formatFailures(checksResults)` turns that into a short, scannable block (one entry per occurrence, numbered, with rule ID/severity/selector/hint) that you hand to your assertion library's own failure-message parameter, as above. A real failure then prints:
+
+```
+Error: 1) a11ycore-button-name-present (serious): This button has no accessible name.
+   at html > body > button
+   Provide visible button text or a programmatic accessible-name mechanism (for example aria-label) so assistive technologies can identify the button.
+2) a11ycore-img-alt-present (serious): Missing alt attribute on <img>.
+   at html > body > img
+   Add an alt attribute (use alt="" only for decorative images).
+```
+
+...with Playwright's own raw diff still printed underneath (unavoidable — `toEqual` always includes it), but the readable summary now comes first, where it's actually useful. Deliberately a plain function, not a custom `expect` matcher — no dependency on any particular assertion library, so it works the same with Playwright's `expect`, Jest, Vitest, or a hand-rolled `if`/`throw`. Defaults to `fail`/`cantTell` outcomes (the only two that ever carry occurrences); pass `{ outcomes: [...] }` to narrow further. A thrown rule (`occurrences: []`, `error` set — see `../a11y-core/docs/OUTPUT_SCHEMA.md`) is still surfaced using its `error` message rather than silently dropped.
 
 ### Scanning every frame, including cross-origin iframes
 

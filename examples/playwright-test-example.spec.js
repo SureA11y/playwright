@@ -17,7 +17,7 @@
  */
 
 const { test, expect } = require('playwright/test');
-const { A11yCoreBuilder } = require('../src/index.js');
+const { A11yCoreBuilder, formatFailures } = require('../src/index.js');
 
 test('flags real accessibility issues (unlabeled button, missing alt, missing title/lang)', async ({ page }) => {
   await page.goto(
@@ -44,11 +44,8 @@ test('a well-formed page has no accessibility violations', async ({ page }) => {
     .analyze();
 
   // The real assertion shape you'd use as an accessibility gate in CI --
-  // fails loudly with which rule(s)/occurrence(s) broke, not just a bare
-  // "not equal to []".
-  const summary = results.checksResults
-    .map((r) => `${r.ruleId} (${r.severity}): ${r.occurrences.length} occurrence(s)`)
-    .join('\n');
-
-  expect(results.checksResults, `Accessibility violations found:\n${summary}`).toEqual([]);
+  // formatFailures() turns checksResults into a readable block (rule,
+  // severity, selector, hint per occurrence) instead of a bare "not equal
+  // to []" diff, so a failure is scannable straight from CI/terminal output.
+  expect(results.checksResults, formatFailures(results.checksResults)).toEqual([]);
 });
