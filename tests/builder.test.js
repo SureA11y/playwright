@@ -224,6 +224,70 @@ test('A11yCoreBuilder: reportOnly() applies per-frame when combined with frames(
   }
 });
 
+test('A11yCoreBuilder: elementRef(true) attaches a live, usable ElementHandle to each fail/cantTell occurrence', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><img id="pic" src="x.png"></body></html>');
+
+    const results = await new A11yCoreBuilder({ page }).elementRef(true).analyze();
+
+    const rule = results.checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present');
+    assert.strictEqual(rule.outcome, 'fail');
+    const [occurrence] = rule.occurrences;
+    assert.ok(occurrence.elementHandle, 'occurrence should carry a live ElementHandle');
+    // Prove it's a real, usable handle into the page -- not just a
+    // truthy placeholder -- by reading a live DOM property through it.
+    const id = await occurrence.elementHandle.evaluate((el) => el.id);
+    assert.strictEqual(id, 'pic');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: elementRef(true) leaves elementHandle null for an occurrence with no resolvable selector, instead of throwing', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><button>x</button></body></html>');
+
+    // a11ycore-contrast-enhanced can report a page-wide occurrence with
+    // selector: "" (no single target element) -- confirms .elementRef(true)
+    // doesn't crash calling .$("") on it (an invalid CSS selector) and
+    // instead leaves elementHandle null.
+    const results = await new A11yCoreBuilder({ page }).elementRef(true).analyze();
+    const rule = results.checksResults.find((r) => r.ruleId === 'a11ycore-contrast-enhanced');
+    const occurrence = rule.occurrences.find((o) => o.selector === '');
+    assert.ok(occurrence, 'expected an occurrence with an empty selector on this page');
+    assert.strictEqual(occurrence.elementHandle, null);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: elementRef(true) resolves against each frame\'s own document when combined with frames(true)', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(
+      'data:text/html,<html><body>' +
+      '<button>Top button, has a name</button>' +
+      '<iframe srcdoc="%3Chtml%3E%3Cbody%3E%3Cimg id=inner src=x.png%3E%3C/body%3E%3C/html%3E"></iframe>' +
+      '</body></html>'
+    );
+    await page.waitForLoadState('networkidle').catch(() => {});
+
+    const results = await new A11yCoreBuilder({ page }).frames(true).elementRef(true).analyze();
+
+    const rule = results.frames[0].checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present');
+    assert.strictEqual(rule.outcome, 'fail');
+    const id = await rule.occurrences[0].elementHandle.evaluate((el) => el.id);
+    assert.strictEqual(id, 'inner');
+  } finally {
+    await browser.close();
+  }
+});
+
 test('A11yCoreBuilder: frames(true) scans a genuinely cross-origin iframe (no a11y-core engine support needed for this -- see ../ROADMAP.md gap #1)', async () => {
   const browser = await chromium.launch();
   try {
