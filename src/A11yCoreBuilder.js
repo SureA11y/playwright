@@ -20,11 +20,25 @@ const { runa11yCoreInPage } = require('a11y-core');
  * (severity, confidence, occurrences, policy contract, WCAG SC mappings) is
  * kept as-is rather than reshaped to match axe.
  *
+ * Opt in to scanning every frame on the page (including cross-origin
+ * iframes) via .frames(true):
+ *
+ * const results = await new A11yCoreBuilder({ page }).frames(true).analyze();
+ * // results.topFrame        -- same shape as the single-frame case above
+ * // results.frames          -- array of the same native result shape, one per sub-frame
+ *
+ * Unlike axe-core (which needs a postMessage-based protocol,
+ * runPartial/finishRun, to reach cross-origin iframes, since it's injected
+ * as a plain <script> and is fully subject to the browser's same-origin
+ * policy), this doesn't need any a11y-core engine support: Playwright
+ * drives every frame via CDP at the automation-process level, not as
+ * in-page script, so cross-origin frame.evaluate() already just works --
+ * verified empirically, see ../ROADMAP.md gap #1 for the full story.
+ * Default off, so plain .analyze() keeps returning the single native result
+ * object it always has.
+ *
  * Known v1 limitations (see ../ROADMAP.md for the full, prioritized list and
  * the reasoning behind each):
- * - No cross-frame/iframe traversal -- only scans the top-level page/frame
- *   passed in via `page`. Real content sometimes lives in iframes (cookie
- *   consent dialogs, payment widgets) and won't be scanned yet.
  * - No `elementRef` support -- occurrences carry a CSS selector + HTML
  *   snippet, not a live element handle.
  * - No `.reportOnly()`-style result filtering yet -- `analyze()` always
@@ -44,6 +58,7 @@ class A11yCoreBuilder {
     }
     this._page = page;
     this._url = url || null;
+    this._scanFrames = false;
     this._includeSelectors = [];
     this._excludeSelectors = [];
     this._includeRuleIds = [];
@@ -101,6 +116,18 @@ class A11yCoreBuilder {
   }
 
   /**
+   * Opt in to also scanning every sub-frame on the page (including
+   * cross-origin iframes -- see this file's own header comment for why
+   * that needs no a11y-core engine support). Default off; when off,
+   * analyze() returns the same single native result object it always has.
+   * When on, analyze() instead returns { topFrame, frames }.
+   */
+  frames(enabled = true) {
+    this._scanFrames = !!enabled;
+    return this;
+  }
+
+  /**
    * Runs the scan and returns a11y-core's native result object.
    * @returns {Promise<object>} see a11y-core's docs/OUTPUT_SCHEMA.md
    */
@@ -124,19 +151,18 @@ class A11yCoreBuilder {
       }
       : null;
 
-    const url = this._url || (typeof this._page.url === 'function' ? this._page.url() : null);
-
-    // Playwright's page.evaluate(fn, arg) only accepts ONE arg value --
-    // page.evaluate(fn, a, b, c, d) throws "Too many arguments. If you need
-    // to pass more than 1 argument to the function wrap them in an object."
-    // (confirmed against a real Playwright page -- see a11y-core's own
-    // docs/INTEGRATION.md for the full story, including why this differs
-    // from Puppeteer's variadic form). runa11yCoreInPage itself takes 4
-    // positional args, so wrap it in a single-arg function that
-    // destructures one options object, embedding runa11yCoreInPage's own
-    // source via .toString() so the wrapper stays fully self-contained once
-    // serialized into the page (it has zero free vars of its own -- see
-    // a11y-core's docs/RULE_AUTHORING.md for why that matters).
+    // Playwright's page.evaluate(fn, arg) (and frame.evaluate(fn, arg), same
+    // signature) only accepts ONE arg value -- page.evaluate(fn, a, b, c, d)
+    // throws "Too many arguments. If you need to pass more than 1 argument
+    // to the function wrap them in an object." (confirmed against a real
+    // Playwright page -- see a11y-core's own docs/INTEGRATION.md for the
+    // full story, including why this differs from Puppeteer's variadic
+    // form). runa11yCoreInPage itself takes 4 positional args, so wrap it in
+    // a single-arg function that destructures one options object, embedding
+    // runa11yCoreInPage's own source via .toString() so the wrapper stays
+    // fully self-contained once serialized into the page (it has zero free
+    // vars of its own -- see a11y-core's docs/RULE_AUTHORING.md for why that
+    // matters).
     const wrapperSource = `(args) => {
       const runa11yCoreInPage = ${runa11yCoreInPage.toString()};
       return runa11yCoreInPage(args.url, args.contextSelector, args.engineOptions, args.runOnly);
@@ -144,12 +170,45 @@ class A11yCoreBuilder {
     // eslint-disable-next-line no-eval
     const wrapperFn = eval(wrapperSource);
 
-    return this._page.evaluate(wrapperFn, {
-      url,
-      contextSelector,
-      engineOptions,
-      runOnly
-    });
+    // A Playwright Page and a Frame both expose the same .evaluate(fn, arg)
+    // and .url() shape, so this works unchanged for either.
+    const runInFrame = async (frameOrPage) => {
+      const frameUrl = this._url || (typeof frameOrPage.url === 'function' ? frameOrPage.url() : null);
+      return frameOrPage.evaluate(wrapperFn, {
+        url: frameUrl,
+        contextSelector,
+        engineOptions,
+        runOnly
+      });
+    };
+
+    if (!this._scanFrames) {
+      return runInFrame(this._page);
+    }
+
+    const mainFrame = this._page.mainFrame();
+    const topFrame = await runInFrame(mainFrame);
+
+    // page.frames() includes the main frame itself -- exclude it here since
+    // it's already covered by topFrame above, so callers don't have to
+    // de-duplicate it themselves out of the frames array.
+    const subFrames = this._page.frames().filter((f) => f !== mainFrame);
+    const frames = [];
+    for (const frame of subFrames) {
+      try {
+        frames.push(await runInFrame(frame));
+      } catch (e) {
+        // A frame can detach/navigate away mid-scan, or be a sandboxed
+        // frame the browser blocks scripting in -- don't let one bad frame
+        // abort the whole multi-frame scan; report it and keep going.
+        frames.push({
+          url: (typeof frame.url === 'function' ? frame.url() : null),
+          error: (e && e.message) || String(e)
+        });
+      }
+    }
+
+    return { topFrame, frames };
   }
 }
 

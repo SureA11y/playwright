@@ -45,6 +45,19 @@ await browser.close();
 
 Also see `examples/basic-scan.js` for a runnable script (`npm run example -- <url>`).
 
+### Scanning every frame, including cross-origin iframes
+
+```js
+const results = await new A11yCoreBuilder({ page }).frames(true).analyze();
+
+console.log(results.topFrame.checksResults.filter(r => r.outcome === 'fail'));   // the top-level page
+for (const frame of results.frames) {
+  console.log(frame.checksResults.filter(r => r.outcome === 'fail'));            // each sub-frame, same result shape
+}
+```
+
+Unlike axe-core (which needs a `postMessage`-based protocol to reach cross-origin iframes, since it's injected as a plain `<script>` fully subject to the browser's same-origin policy), this needs no `a11y-core` engine support at all — Playwright drives every frame via CDP at the automation-process level, so cross-origin `frame.evaluate()` already just works. Verified against a real cross-origin page (`example.org` embedded in an unrelated origin) — see `ROADMAP.md` gap #1 and `tests/builder.test.js`. Default off, so plain `.analyze()` is unaffected unless you opt in.
+
 ## Status and what's next
 
 See `ROADMAP.md` — it documents what's built, what's verified, the known gaps vs. axe-core (prioritized, with reasoning), and exactly what to pick up next. Read it before starting new work here, especially in a fresh chat session that hasn't seen how this project came to exist.
