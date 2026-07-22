@@ -45,6 +45,8 @@ await browser.close();
 
 Also see `examples/basic-scan.js` for a runnable script (`npm run example -- <url>`).
 
+`withTags()`/`disableRules()` above have counterparts: `.withRules([...])` (only run these specific rule IDs) and `.disableTags([...])` (never run rules carrying any of these tags). All four compose the same way axe's `runOnly`/`disableRules` do, with one non-obvious rule worth knowing: a "disable" always wins over a "with" on the same ID/tag (e.g. `.withRules(['a']).disableRules(['a'])` drops `'a'` entirely), and combining `.withRules()` **and** `.withTags()` together requires a rule to satisfy *both* (a11y-core's default `includeMode: 'and'` — see `../a11y-core/docs/ENGINE_OPTIONS.md`), not either one.
+
 ### Using it as an E2E accessibility gate
 
 The pattern above works unchanged inside a real `@playwright/test` test (this is the pattern that actually matters for a CI/E2E suite, not just an ad hoc script):
@@ -104,6 +106,34 @@ await failing.occurrences[0].elementHandle.click();
 ```
 
 This resolves `occurrence.selector` to an `ElementHandle` (via `page.$()`/`frame.$()`) instead of leaving you to re-resolve a possibly-stale selector string yourself. Default off — resolving a handle per occurrence is a real page query per occurrence, so it costs more than a plain `.analyze()`. Combines with `.frames(true)`: each frame's occurrences resolve against that frame's own document. Not every occurrence has one target element — a page-wide finding (some `manual`/`cantTell` rules) can carry `selector: ""`, in which case `occurrence.elementHandle` is `null` rather than a handle.
+
+### Registering a custom rule at runtime
+
+`a11y-core` supports registering additional rules per-scan via `engineOptions.customRules` — this binding has no dedicated builder method for it yet, but the existing `.options()` passthrough already forwards it, so it works today:
+
+```js
+const results = await new A11yCoreBuilder({ page })
+  .options({
+    customRules: [{
+      id: 'my-org-custom-rule',
+      meta: { title: 'My custom rule', tags: ['custom'], defaultSeverity: 'serious' },
+      // Must be a function-source STRING here, not a live function --
+      // engineOptions crosses a page.evaluate() JSON boundary that can't
+      // carry a live Function reference, only a string it can reconstruct.
+      runInPage: (function (ctx) {
+        const el = ctx.document.querySelector('.my-widget');
+        return el ? { outcome: 'fail', occurrences: [{ __node: el }] } : { outcome: 'notApplicable', occurrences: [] };
+      }).toString()
+    }]
+  })
+  .analyze();
+```
+
+A custom rule descriptor is the same shape as one of a11y-core's own internal rule modules (`{ id, meta, runInPage, applicability?, data? }`) — see `../a11y-core/docs/ENGINE_OPTIONS.md` for the full contract. Results appear in `checksResults` exactly like a built-in rule's, including automatic `selector`/`html`/`structuralPath` fill-in. Registered per-scan only (nothing persists between calls or shows up in any catalog listing), and a custom rule whose `id` collides with a built-in one overrides it for that scan.
+
+### Element addressing beyond a CSS selector
+
+Every occurrence already carries `selector` and (with `.elementRef(true)`, above) a live `ElementHandle`. It also carries `structuralPath` — a sibling-index path from the document root down to the flagged element (e.g. `[1, 0, 2]`) — a more robust identity than a selector string alone, since it survives some DOM changes a selector wouldn't (an id/class rename, for instance). No opt-in needed; it's already on every `fail`/`cantTell` occurrence today. See `../a11y-core/docs/OUTPUT_SCHEMA.md` for the full field description.
 
 ## TypeScript
 
