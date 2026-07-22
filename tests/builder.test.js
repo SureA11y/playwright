@@ -5,6 +5,19 @@ const assert = require('node:assert');
 const { chromium } = require('playwright');
 const { A11yCoreBuilder } = require('../src/index.js');
 
+// Shared across the customRules tests below -- reported outcome depends on
+// whether ctx.document has a .my-widget element. runInPage must be a
+// function-source STRING, not a live function -- engineOptions crosses a
+// page.evaluate() JSON boundary that can't carry a live Function reference.
+const MY_ORG_CUSTOM_RULE = {
+  id: 'my-org-custom-rule',
+  meta: { title: 'My custom rule', tags: ['custom'], defaultSeverity: 'serious' },
+  runInPage: (function (ctx) {
+    const el = ctx.document.querySelector('.my-widget');
+    return el ? { outcome: 'fail', occurrences: [{ __node: el }] } : { outcome: 'notApplicable', occurrences: [] };
+  }).toString()
+};
+
 test('A11yCoreBuilder.analyze() scans a real page and returns a11y-core\'s native result shape', async () => {
   const browser = await chromium.launch();
   try {
@@ -81,6 +94,26 @@ test('A11yCoreBuilder: exclude() skips elements inside the excluded subtree', as
   }
 });
 
+test('A11yCoreBuilder: include() and exclude() combined -- scoped to a region, minus a sub-part of it', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(
+      'data:text/html,<html><body>' +
+      '<section id="scope"><div id="excluded"><img src="x.png"></div><img src="y.png"></section>' +
+      '<img src="z.png">' + // outside #scope entirely -- must not count either
+      '</body></html>'
+    );
+
+    const results = await new A11yCoreBuilder({ page }).include('#scope').exclude('#excluded').analyze();
+    const rule = results.checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present');
+    assert.strictEqual(rule.outcome, 'fail');
+    assert.deepStrictEqual(rule.occurrences.map((o) => o.selector), ['#scope > img']);
+  } finally {
+    await browser.close();
+  }
+});
+
 test('A11yCoreBuilder: disableRules() removes a rule from the result entirely', async () => {
   const browser = await chromium.launch();
   try {
@@ -93,6 +126,56 @@ test('A11yCoreBuilder: disableRules() removes a rule from the result entirely', 
 
     const rule = results.checksResults.find((r) => r.ruleId === 'a11ycore-button-name-present');
     assert.strictEqual(rule, undefined);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: withRules() only runs the given rule IDs', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><img src=x.png><button></button></body></html>');
+
+    const results = await new A11yCoreBuilder({ page })
+      .withRules(['a11ycore-img-alt-present'])
+      .analyze();
+
+    assert.deepStrictEqual(results.checksResults.map((r) => r.ruleId), ['a11ycore-img-alt-present']);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: withRules() and disableRules() combined on the same rule ID -- disableRules wins', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><img src=x.png><button></button></body></html>');
+
+    // a11y-core applies excludeRuleIds *after* includeRuleIds (see
+    // ../a11y-core/docs/ENGINE_OPTIONS.md) -- disableRules() should win over
+    // withRules() when the same ID appears in both.
+    const results = await new A11yCoreBuilder({ page })
+      .withRules(['a11ycore-img-alt-present', 'a11ycore-button-name-present'])
+      .disableRules(['a11ycore-img-alt-present'])
+      .analyze();
+
+    assert.deepStrictEqual(results.checksResults.map((r) => r.ruleId), ['a11ycore-button-name-present']);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: disableTags() never runs rules carrying any of the given tags', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><button></button></body></html>');
+
+    // button-name-present carries wcag412 -- disabling that tag should remove it.
+    const results = await new A11yCoreBuilder({ page }).disableTags(['wcag412']).analyze();
+    assert.ok(!results.checksResults.some((r) => r.ruleId === 'a11ycore-button-name-present'));
   } finally {
     await browser.close();
   }
@@ -113,6 +196,43 @@ test('A11yCoreBuilder: withTags() only runs rules carrying at least one of the g
   }
 });
 
+test('A11yCoreBuilder: withTags() and disableTags() combined on the same tag -- disableTags wins, leaving nothing', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><button></button></body></html>');
+
+    const results = await new A11yCoreBuilder({ page }).withTags(['wcag412']).disableTags(['wcag412']).analyze();
+    assert.deepStrictEqual(results.checksResults, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: withRules() and withTags() combined require BOTH to match (a11y-core\'s default "and" includeMode)', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><img src=x.png><button></button></body></html>');
+
+    // a11y-core's default includeMode is 'and' when both an ID include and a
+    // tag include are given (see ../a11y-core/docs/ENGINE_OPTIONS.md) -- this
+    // binding doesn't expose includeMode, so combining withRules() and
+    // withTags() is stricter than either alone, not an OR of the two. Worth
+    // locking down since it's non-obvious: img-alt-present doesn't carry
+    // wcag412, so this combination yields nothing even though img-alt-present
+    // alone matches withRules() and button-name-present alone matches wcag412.
+    const results = await new A11yCoreBuilder({ page })
+      .withRules(['a11ycore-img-alt-present'])
+      .withTags(['wcag412'])
+      .analyze();
+
+    assert.deepStrictEqual(results.checksResults, []);
+  } finally {
+    await browser.close();
+  }
+});
+
 test('A11yCoreBuilder: options() merges into engineOptions and is actually applied', async () => {
   const browser = await chromium.launch();
   try {
@@ -127,6 +247,75 @@ test('A11yCoreBuilder: options() merges into engineOptions and is actually appli
     // rather than just presence, confirms .options() really reached the
     // engine instead of being silently dropped.
     assert.strictEqual(rule.engineOptions.locale, 'fr');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: options({ customRules }) registers a runtime custom rule via a11y-core\'s engineOptions passthrough', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><div class="my-widget"></div></body></html>');
+
+    // No dedicated builder method for this yet (see ../ROADMAP.md gap #4) --
+    // .options() already forwards arbitrary engineOptions, including
+    // a11y-core's customRules runtime-registration escape hatch (see
+    // ../a11y-core/docs/ENGINE_OPTIONS.md).
+    const results = await new A11yCoreBuilder({ page })
+      .options({ customRules: [MY_ORG_CUSTOM_RULE] })
+      .analyze();
+
+    const custom = results.checksResults.find((r) => r.ruleId === 'my-org-custom-rule');
+    assert.ok(custom, 'custom rule should appear in checksResults like a built-in rule');
+    assert.strictEqual(custom.outcome, 'fail');
+    // Confirms the custom rule's occurrence gets the same automatic
+    // selector/structuralPath fill-in a built-in rule's does, not a raw
+    // pass-through of whatever the custom runInPage returned.
+    assert.strictEqual(custom.occurrences[0].selector, 'html > body > div');
+    assert.deepStrictEqual(custom.occurrences[0].structuralPath, [1, 0]);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: options({ customRules }) combined with frames(true) -- the custom rule runs in every frame, not just the top one', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(
+      'data:text/html,<html><body>' +
+      '<div class="my-widget"></div>' +
+      '<iframe srcdoc="%3Chtml%3E%3Cbody%3E%3Cdiv class=my-widget%3E%3C/div%3E%3C/body%3E%3C/html%3E"></iframe>' +
+      '</body></html>'
+    );
+    await page.waitForLoadState('networkidle').catch(() => {});
+
+    const results = await new A11yCoreBuilder({ page })
+      .frames(true)
+      .options({ customRules: [MY_ORG_CUSTOM_RULE] })
+      .analyze();
+
+    assert.strictEqual(results.topFrame.checksResults.find((r) => r.ruleId === 'my-org-custom-rule').outcome, 'fail');
+    assert.strictEqual(results.frames[0].checksResults.find((r) => r.ruleId === 'my-org-custom-rule').outcome, 'fail');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: options({ customRules }) combined with reportOnly() -- the custom rule is filtered the same as a built-in one', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><div class="my-widget"></div></body></html>');
+
+    const results = await new A11yCoreBuilder({ page })
+      .options({ customRules: [MY_ORG_CUSTOM_RULE] })
+      .reportOnly(['fail'])
+      .analyze();
+
+    assert.ok(results.checksResults.some((r) => r.ruleId === 'my-org-custom-rule'));
+    assert.ok(results.checksResults.every((r) => r.outcome === 'fail'));
   } finally {
     await browser.close();
   }
@@ -239,6 +428,23 @@ test('A11yCoreBuilder: elementRef(true) attaches a live, usable ElementHandle to
     // Prove it's a real, usable handle into the page -- not just a
     // truthy placeholder -- by reading a live DOM property through it.
     const id = await occurrence.elementHandle.evaluate((el) => el.id);
+    assert.strictEqual(id, 'pic');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: reportOnly() and elementRef(true) combined -- surviving occurrences still carry a usable ElementHandle', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><img id="pic" src="x.png"><button></button></body></html>');
+
+    const results = await new A11yCoreBuilder({ page }).reportOnly(['fail']).elementRef(true).analyze();
+
+    assert.ok(results.checksResults.every((r) => r.outcome === 'fail'));
+    const rule = results.checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present');
+    const id = await rule.occurrences[0].elementHandle.evaluate((el) => el.id);
     assert.strictEqual(id, 'pic');
   } finally {
     await browser.close();
