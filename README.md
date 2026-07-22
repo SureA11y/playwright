@@ -45,6 +45,25 @@ await browser.close();
 
 Also see `examples/basic-scan.js` for a runnable script (`npm run example -- <url>`).
 
+### Using it as an E2E accessibility gate
+
+The pattern above works unchanged inside a real `@playwright/test` test (this is the pattern that actually matters for a CI/E2E suite, not just an ad hoc script):
+
+```js
+const { test, expect } = require('@playwright/test');
+const { A11yCoreBuilder } = require('a11y-core-playwright');
+
+test('page has no accessibility violations', async ({ page }) => {
+  await page.goto('https://example.com/');
+
+  const results = await new A11yCoreBuilder({ page }).reportOnly(['fail']).analyze();
+
+  expect(results.checksResults).toEqual([]);
+});
+```
+
+See `examples/playwright-test-example.spec.js` for a fuller, runnable version (`npm run example:e2e`) — one test proving real violations get caught (unlabeled button, missing `alt`), one proving a well-formed page passes cleanly, and a loud failure message that names the broken rule(s) instead of a bare `toEqual` diff.
+
 ### Scanning every frame, including cross-origin iframes
 
 ```js
