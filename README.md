@@ -58,6 +58,20 @@ for (const frame of results.frames) {
 
 Unlike axe-core (which needs a `postMessage`-based protocol to reach cross-origin iframes, since it's injected as a plain `<script>` fully subject to the browser's same-origin policy), this needs no `a11y-core` engine support at all — Playwright drives every frame via CDP at the automation-process level, so cross-origin `frame.evaluate()` already just works. Verified against a real cross-origin page (`example.org` embedded in an unrelated origin) — see `ROADMAP.md` gap #1 and `tests/builder.test.js`. Default off, so plain `.analyze()` is unaffected unless you opt in.
 
+### Trimming the result to just violations
+
+By default `analyze()` returns every rule's outcome, including `pass`/`notApplicable` — a11y-core's own deliberate "not a violations-only list" design (see `../a11y-core/docs/OUTPUT_SCHEMA.md`). Use `.reportOnly()` to post-filter down to only the outcomes you care about:
+
+```js
+const results = await new A11yCoreBuilder({ page })
+  .reportOnly(['fail', 'cantTell'])
+  .analyze();
+
+console.log(results.checksResults); // only fail/cantTell entries, pass/notApplicable dropped
+```
+
+Valid outcome values are `'pass'`, `'fail'`, `'cantTell'`, `'notApplicable'`. This is pure binding-layer filtering — a11y-core itself still computes every rule; nothing about the scan itself changes. Combines with `.frames(true)`: the filter is applied to `results.topFrame` and each entry of `results.frames` independently.
+
 ## Status and what's next
 
 See `ROADMAP.md` — it documents what's built, what's verified, the known gaps vs. axe-core (prioritized, with reasoning), and exactly what to pick up next. Read it before starting new work here, especially in a fresh chat session that hasn't seen how this project came to exist.

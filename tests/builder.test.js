@@ -178,6 +178,52 @@ test('A11yCoreBuilder: frames(true) scans a sub-frame and keeps its findings sep
   }
 });
 
+test('A11yCoreBuilder: reportOnly() filters checksResults down to the given outcomes', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><img src="x.png"><button></button></body></html>');
+
+    const results = await new A11yCoreBuilder({ page }).reportOnly(['fail']).analyze();
+
+    assert.ok(results.checksResults.length > 0);
+    assert.ok(results.checksResults.every((r) => r.outcome === 'fail'));
+    assert.ok(results.checksResults.some((r) => r.ruleId === 'a11ycore-button-name-present'));
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: reportOnly() rejects an invalid outcome value', async () => {
+  const page = { evaluate: async () => {} };
+  assert.throws(
+    () => new A11yCoreBuilder({ page }).reportOnly(['nope']),
+    /invalid outcome "nope"/
+  );
+});
+
+test('A11yCoreBuilder: reportOnly() applies per-frame when combined with frames(true)', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(
+      'data:text/html,<html><body>' +
+      '<button>Top button, has a name</button>' +
+      '<iframe srcdoc="%3Chtml%3E%3Cbody%3E%3Cimg src=x.png%3E%3C/body%3E%3C/html%3E"></iframe>' +
+      '</body></html>'
+    );
+    await page.waitForLoadState('networkidle').catch(() => {});
+
+    const results = await new A11yCoreBuilder({ page }).frames(true).reportOnly(['fail']).analyze();
+
+    assert.ok(results.topFrame.checksResults.every((r) => r.outcome === 'fail'));
+    assert.ok(results.frames[0].checksResults.every((r) => r.outcome === 'fail'));
+    assert.ok(results.frames[0].checksResults.some((r) => r.ruleId === 'a11ycore-img-alt-present'));
+  } finally {
+    await browser.close();
+  }
+});
+
 test('A11yCoreBuilder: frames(true) scans a genuinely cross-origin iframe (no a11y-core engine support needed for this -- see ../ROADMAP.md gap #1)', async () => {
   const browser = await chromium.launch();
   try {
