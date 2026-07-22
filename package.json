@@ -3,12 +3,16 @@
   "version": "0.1.0",
   "description": "Playwright binding for a11y-core -- scan real, live-rendered pages for accessibility issues.",
   "main": "src/index.js",
+  "types": "src/index.d.ts",
   "license": "MIT",
   "engines": {
     "node": ">=18.13.0"
   },
   "dependencies": {
     "a11y-core": "file:../a11y-core"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.0.0"
   },
   "devDependencies": {
     "playwright": "^1.61.1"
