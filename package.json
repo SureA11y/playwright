@@ -9,7 +9,8 @@
     "node": ">=18.13.0"
   },
   "dependencies": {
-    "a11y-core": "file:../a11y-core"
+    "a11y-core": "file:../a11y-core",
+    "a11y-core-binding-base": "file:../a11y-core-binding-base"
   },
   "peerDependencies": {
     "playwright": ">=1.0.0"

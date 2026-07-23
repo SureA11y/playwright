@@ -177,6 +177,8 @@ Every occurrence already carries `selector` and (with `.elementRef(true)`, above
 
 See [`../a11y-core/docs/BINDING_AUTHORS_GUIDE.md`](../a11y-core/docs/BINDING_AUTHORS_GUIDE.md) — a reference for building the *next* binding (Puppeteer, Cypress, ...), written from what this project already worked out: which axe-parity features are engine-level (work through a generic `.options()`/`runOnly` passthrough with zero binding code, including WCAG-version tag filtering) vs. binding-layer (element refs, `reportOnly`-style verbosity filtering, the `page.evaluate()` serialization-boundary caveat that `.withCustomRules()` exists to paper over). It cites this project's `.elementRef()`, `.reportOnly()`, `.frames(true)`, and `.withCustomRules()` by name as the worked examples.
 
+Four more bindings have since been built this way (Puppeteer, Selenium, WebdriverIO, Cypress), each copying this project's own scaffolding as a starting point. As of `ROADMAP.md` §5, that scaffolding is no longer duplicated per-project: `A11yCoreBuilder` here (and every sibling's own) extends `A11yCoreBuilderBase` from [`../a11y-core-binding-base`](../a11y-core-binding-base), a small shared package holding everything that has nothing to do with any particular driver. A *new* binding should depend on that package from the start rather than re-copying this project's `include()`/`exclude()`/etc. by hand.
+
 ## Status and what's next
 
 See `ROADMAP.md` — it documents what's built, what's verified, the known gaps vs. axe-core (prioritized, with reasoning), and exactly what to pick up next. Read it before starting new work here, especially in a fresh chat session that hasn't seen how this project came to exist.
