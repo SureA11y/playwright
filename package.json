@@ -4,6 +4,7 @@
   "description": "Playwright binding for a11y-core -- scan real, live-rendered pages for accessibility issues.",
   "main": "src/index.js",
   "types": "src/index.d.ts",
+  "author": "Jorge Rumoroso",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -15,6 +16,9 @@
   },
   "engines": {
     "node": ">=18.13.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "src",
