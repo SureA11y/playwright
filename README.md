@@ -9,7 +9,7 @@ This is a **separate project/package** from `a11y-core` itself, kept as a siblin
 `a11y-core` isn't published to npm yet, so this package depends on it via a relative `file:` path (see `package.json`):
 
 ```json
-"dependencies": { "a11y-core": "file:../a11y-core" }
+"dependencies": { "a11y-core": "file:../core" }
 ```
 
 That means this project must stay a sibling of `a11y-core` (or you update the path) for `npm install` to resolve it.
