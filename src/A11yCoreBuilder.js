@@ -15,11 +15,12 @@ const { A11yCoreBuilderBase } = require('@a11y-core/binding-base');
  *   .analyze();
  *
  * `results` is a11y-core's own native result shape (checksResults /
- * rulesResults -- see a11y-core's docs/OUTPUT_SCHEMA.md), not axe-core's
- * violations/passes/incomplete/inapplicable shape. Method names are modeled
- * on axe-core's AxeBuilder for migration ease, but the richer native schema
- * (severity, confidence, occurrences, policy contract, WCAG SC mappings) is
- * kept as-is rather than reshaped to match axe.
+ * rulesResults -- see a11y-core's docs/OUTPUT_SCHEMA.md), not the
+ * violations/passes/incomplete/inapplicable shape used by other tools in
+ * this space. Method names are modeled on common conventions in this space
+ * for migration ease, but the richer native schema (severity, confidence,
+ * occurrences, policy contract, WCAG SC mappings) is kept as-is rather than
+ * reshaped to match.
  *
  * Extends `A11yCoreBuilderBase` (from `a11y-core-binding-base`), which owns
  * every method with no driver-specific work at all -- `include()`/
@@ -40,10 +41,11 @@ const { A11yCoreBuilderBase } = require('@a11y-core/binding-base');
  * // results.topFrame        -- same shape as the single-frame case above
  * // results.frames          -- array of the same native result shape, one per sub-frame
  *
- * Unlike axe-core (which needs a postMessage-based protocol,
- * runPartial/finishRun, to reach cross-origin iframes, since it's injected
- * as a plain <script> and is fully subject to the browser's same-origin
- * policy), this doesn't need any a11y-core engine support: Playwright
+ * Unlike script-injection-based accessibility engines (which need a
+ * postMessage-based protocol, runPartial/finishRun, to reach cross-origin
+ * iframes, since they're injected as a plain <script> and are fully subject
+ * to the browser's same-origin policy), this doesn't need any a11y-core
+ * engine support: Playwright
  * drives every frame via CDP at the automation-process level, not as
  * in-page script, so cross-origin frame.evaluate() already just works --
  * verified empirically, see ../ROADMAP.md gap #1 for the full story.
@@ -73,8 +75,8 @@ const { A11yCoreBuilderBase } = require('@a11y-core/binding-base');
  *
  * Register your own rule(s) for just this scan with
  * `.withCustomRules([...])` (a11y-core's `engineOptions.customRules`
- * escape hatch, axe's `configure({ rules })` equivalent -- see
- * a11y-core's docs/ENGINE_OPTIONS.md). Pass a real, live `runInPage`/
+ * escape hatch -- see a11y-core's docs/ENGINE_OPTIONS.md). Pass a real,
+ * live `runInPage`/
  * `applicability` function -- unlike the raw `.options({ customRules })`
  * passthrough, this method converts them to the function-source string
  * a11y-core needs on this side of the page.evaluate() JSON boundary for
