@@ -7,6 +7,6 @@
 // real file here (not just re-exporting straight from src/index.js) so
 // `require('a11y-core-playwright/src/formatFailures')` keeps working for
 // anyone importing the submodule path directly.
-const { formatFailures } = require('a11y-core-binding-base');
+const { formatFailures } = require('@a11y-core/binding-base');
 
 module.exports = { formatFailures };
