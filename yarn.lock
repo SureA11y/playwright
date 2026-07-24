@@ -2,11 +2,11 @@
 # yarn lockfile v1
 
 
-"@a11y-core/binding-base@file:../binding-base":
+"@a11y-labs/binding-base@^0.1.0":
   version "0.1.0"
   resolved "file:../binding-base"
 
-"@a11y-core/core@file:../core":
+"@a11y-labs/core@^1.1.0":
   version "1.1.0"
   resolved "file:../core"
   dependencies:

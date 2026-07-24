@@ -29,8 +29,8 @@ test('flags real accessibility issues (unlabeled button, missing alt, missing ti
     .analyze();
 
   const failedRuleIds = results.checksResults.map((r) => r.ruleId);
-  expect(failedRuleIds).toContain('a11ycore-img-alt-present');
-  expect(failedRuleIds).toContain('a11ycore-button-name-present');
+  expect(failedRuleIds).toContain('img-alt-present');
+  expect(failedRuleIds).toContain('button-name-present');
 });
 
 test('a well-formed page has no accessibility violations', async ({ page }) => {
