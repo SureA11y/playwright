@@ -21,8 +21,8 @@ for (const browserType of ['firefox', 'webkit']) {
       const results = await new A11yCoreBuilder({ page }).reportOnly(['fail']).analyze();
       const ruleIds = results.checksResults.map((r) => r.ruleId);
 
-      assert.ok(ruleIds.includes('a11ycore-img-alt-present'));
-      assert.ok(ruleIds.includes('a11ycore-button-name-present'));
+      assert.ok(ruleIds.includes('img-alt-present'));
+      assert.ok(ruleIds.includes('button-name-present'));
     } finally {
       await browser.close();
     }

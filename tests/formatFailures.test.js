@@ -8,7 +8,7 @@ const { A11yCoreBuilder, formatFailures } = require('../src/index.js');
 test('formatFailures(): returns a fixed message when there are no violations', () => {
   assert.strictEqual(formatFailures([]), 'No accessibility violations found.');
   assert.strictEqual(
-    formatFailures([{ ruleId: 'a11ycore-img-alt-present', outcome: 'pass', occurrences: [] }]),
+    formatFailures([{ ruleId: 'img-alt-present', outcome: 'pass', occurrences: [] }]),
     'No accessibility violations found.'
   );
 });
@@ -16,7 +16,7 @@ test('formatFailures(): returns a fixed message when there are no violations', (
 test('formatFailures(): formats one line block per occurrence, numbered, with rule/severity/selector/hint', () => {
   const checksResults = [
     {
-      ruleId: 'a11ycore-img-alt-present',
+      ruleId: 'img-alt-present',
       outcome: 'fail',
       severity: 'serious',
       occurrences: [
@@ -27,7 +27,7 @@ test('formatFailures(): formats one line block per occurrence, numbered, with ru
 
   assert.strictEqual(
     formatFailures(checksResults),
-    '1) a11ycore-img-alt-present (serious): Missing alt attribute on <img>.\n' +
+    '1) img-alt-present (serious): Missing alt attribute on <img>.\n' +
     '   at html > body > img\n' +
     '   Add an alt attribute.'
   );
@@ -36,7 +36,7 @@ test('formatFailures(): formats one line block per occurrence, numbered, with ru
 test('formatFailures(): numbers occurrences across multiple rules and multiple occurrences of the same rule', () => {
   const checksResults = [
     {
-      ruleId: 'a11ycore-img-alt-present',
+      ruleId: 'img-alt-present',
       outcome: 'fail',
       severity: 'serious',
       occurrences: [
@@ -45,7 +45,7 @@ test('formatFailures(): numbers occurrences across multiple rules and multiple o
       ]
     },
     {
-      ruleId: 'a11ycore-button-name-present',
+      ruleId: 'button-name-present',
       outcome: 'fail',
       severity: 'serious',
       occurrences: [{ selector: 'html > body > button', summary: 'No accessible name.', hint: 'Add a label.' }]
@@ -53,17 +53,17 @@ test('formatFailures(): numbers occurrences across multiple rules and multiple o
   ];
 
   const output = formatFailures(checksResults);
-  assert.ok(output.startsWith('1) a11ycore-img-alt-present'));
-  assert.ok(output.includes('2) a11ycore-img-alt-present'));
-  assert.ok(output.includes('3) a11ycore-button-name-present'));
+  assert.ok(output.startsWith('1) img-alt-present'));
+  assert.ok(output.includes('2) img-alt-present'));
+  assert.ok(output.includes('3) button-name-present'));
 });
 
 test('formatFailures(): ignores pass/notApplicable entries and respects a custom outcomes filter', () => {
   const checksResults = [
-    { ruleId: 'a11ycore-a', outcome: 'pass', occurrences: [] },
-    { ruleId: 'a11ycore-b', outcome: 'notApplicable', occurrences: [] },
+    { ruleId: 'a', outcome: 'pass', occurrences: [] },
+    { ruleId: 'b', outcome: 'notApplicable', occurrences: [] },
     {
-      ruleId: 'a11ycore-c',
+      ruleId: 'c',
       outcome: 'cantTell',
       severity: 'moderate',
       occurrences: [{ selector: 'html > body', summary: 'Needs human review.', hint: 'Check manually.' }]
@@ -71,7 +71,7 @@ test('formatFailures(): ignores pass/notApplicable entries and respects a custom
   ];
 
   // Default outcomes (['fail', 'cantTell']) picks up the cantTell entry.
-  assert.ok(formatFailures(checksResults).includes('a11ycore-c'));
+  assert.ok(formatFailures(checksResults).includes('c'));
 
   // Narrowing to just 'fail' drops it, since there's no fail entry here.
   assert.strictEqual(formatFailures(checksResults, { outcomes: ['fail'] }), 'No accessibility violations found.');
@@ -80,7 +80,7 @@ test('formatFailures(): ignores pass/notApplicable entries and respects a custom
 test('formatFailures(): surfaces a thrown rule (occurrences: [], error set) instead of silently dropping it', () => {
   const checksResults = [
     {
-      ruleId: 'a11ycore-broken-rule',
+      ruleId: 'broken-rule',
       outcome: 'cantTell',
       severity: 'serious',
       title: 'A rule that threw',
@@ -90,7 +90,7 @@ test('formatFailures(): surfaces a thrown rule (occurrences: [], error set) inst
   ];
 
   const output = formatFailures(checksResults);
-  assert.strictEqual(output, '1) a11ycore-broken-rule (serious): TypeError: something exploded');
+  assert.strictEqual(output, '1) broken-rule (serious): TypeError: something exploded');
 });
 
 test('formatFailures(): works end-to-end against a real scan\'s checksResults', async () => {
@@ -102,8 +102,8 @@ test('formatFailures(): works end-to-end against a real scan\'s checksResults', 
     const results = await new A11yCoreBuilder({ page }).reportOnly(['fail']).analyze();
     const output = formatFailures(results.checksResults);
 
-    assert.ok(output.includes('a11ycore-img-alt-present'));
-    assert.ok(output.includes('a11ycore-button-name-present'));
+    assert.ok(output.includes('img-alt-present'));
+    assert.ok(output.includes('button-name-present'));
     assert.ok(output.includes('html > body > img'));
   } finally {
     await browser.close();
