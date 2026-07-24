@@ -5,12 +5,25 @@
   "main": "src/index.js",
   "types": "src/index.d.ts",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rumoroso/a11y-core-playwright.git"
+  },
+  "homepage": "https://github.com/rumoroso/a11y-core-playwright#readme",
+  "bugs": {
+    "url": "https://github.com/rumoroso/a11y-core-playwright/issues"
+  },
   "engines": {
     "node": ">=18.13.0"
   },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "dependencies": {
-    "@a11y-core/core": "file:../core",
-    "@a11y-core/binding-base": "file:../binding-base"
+    "@a11y-core/core": "^1.1.0",
+    "@a11y-core/binding-base": "^0.1.0"
   },
   "peerDependencies": {
     "playwright": ">=1.0.0"
