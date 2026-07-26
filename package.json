@@ -1,6 +1,6 @@
 {
   "name": "@surea11y/playwright",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Playwright binding for surea11y -- scan real, live-rendered pages for accessibility issues.",
   "main": "src/index.js",
   "types": "src/index.d.ts",
