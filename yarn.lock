@@ -2,14 +2,14 @@
 # yarn lockfile v1
 
 
-"@a11y-labs/binding-base@^0.1.0":
+"@surea11y/binding-base@^0.1.0":
   version "0.1.0"
-  resolved "https://registry.yarnpkg.com/@a11y-labs/binding-base/-/binding-base-0.1.0.tgz#15278fa77401efd04cd2b924b01afbe39948c5f2"
+  resolved "https://registry.yarnpkg.com/@surea11y/binding-base/-/binding-base-0.1.0.tgz#15278fa77401efd04cd2b924b01afbe39948c5f2"
   integrity sha512-63GdkvINWcE325bIWZF40jr8KjxdnEWA5ddgyDdZTeVe0Un8Qag7dcWJpOruSYQ3lcFhaK66c3cqexYd/dBERA==
 
-"@a11y-labs/core@^1.1.0":
+"@surea11y/core@^1.1.0":
   version "1.1.0"
-  resolved "https://registry.yarnpkg.com/@a11y-labs/core/-/core-1.1.0.tgz#7a575cfb328d9ab45a354a4c09caa37e04271820"
+  resolved "https://registry.yarnpkg.com/@surea11y/core/-/core-1.1.0.tgz#7a575cfb328d9ab45a354a4c09caa37e04271820"
   integrity sha512-tO4JRMJLEsb1QlGyAYcZc1eaSy7kNbqxtochdnmCb9X/+kF6KW1mhLgoV7l8tjMAuG8BiIV2KI+VcAFoD1kZFg==
   dependencies:
     jsdom "^29.1.1"
