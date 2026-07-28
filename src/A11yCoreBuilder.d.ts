@@ -170,8 +170,13 @@ export class A11yCoreBuilder {
 
   /** Scope the scan to one region. Call multiple times for a multi-region union. */
   include(selector: string): this;
-  /** Skip elements matching this selector anywhere in the scanned scope. */
-  exclude(selector: string): this;
+  /**
+   * Skip elements matching this selector anywhere in the scanned scope.
+   * With `opts.rules`, scopes the exclusion to just the named rule ID(s)
+   * instead of globally -- on top of, not instead of, any global exclusions
+   * from other `.exclude(selector)` calls.
+   */
+  exclude(selector: string, opts?: { rules?: string | string[] }): this;
   /** Only run rules carrying at least one of these tags. */
   withTags(tags: string | string[]): this;
   /** Never run rules carrying any of these tags (applied after withTags). */
