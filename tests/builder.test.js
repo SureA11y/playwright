@@ -246,7 +246,7 @@ test('A11yCoreBuilder: withRules() and disableRules() combined on the same rule 
     await page.goto('data:text/html,<html><body><img src=x.png><button></button></body></html>');
 
     // surea11y applies excludeRuleIds *after* includeRuleIds (see
-    // ../surea11y/docs/ENGINE_OPTIONS.md) -- disableRules() should win over
+    // https://github.com/rumoroso/surea11y-core/blob/main/docs/ENGINE_OPTIONS.md) -- disableRules() should win over
     // withRules() when the same ID appears in both.
     const results = await new A11yCoreBuilder({ page })
       .withRules(['img-alt-present', 'button-name-present'])
@@ -308,7 +308,7 @@ test('A11yCoreBuilder: withRules() and withTags() combined require BOTH to match
     await page.goto('data:text/html,<html><body><img src=x.png><button></button></body></html>');
 
     // surea11y's default includeMode is 'and' when both an ID include and a
-    // tag include are given (see ../surea11y/docs/ENGINE_OPTIONS.md) -- this
+    // tag include are given (see https://github.com/rumoroso/surea11y-core/blob/main/docs/ENGINE_OPTIONS.md) -- this
     // binding doesn't expose includeMode, so combining withRules() and
     // withTags() is stricter than either alone, not an OR of the two. Worth
     // locking down since it's non-obvious: img-alt-present doesn't carry
@@ -335,7 +335,7 @@ test('A11yCoreBuilder: options() merges into engineOptions and is actually appli
     const rule = results.checksResults.find((r) => r.ruleId === 'button-name-present');
     assert.ok(rule, 'button-name-present should be present in the result');
     // Each result echoes back the *resolved* engineOptions it actually ran
-    // under (see surea11y's docs/OUTPUT_SCHEMA.md) -- checking that,
+    // under (see https://github.com/rumoroso/surea11y-core/blob/main/docs/OUTPUT_SCHEMA.md) -- checking that,
     // rather than just presence, confirms .options() really reached the
     // engine instead of being silently dropped.
     assert.strictEqual(rule.engineOptions.locale, 'fr');
@@ -350,10 +350,11 @@ test('A11yCoreBuilder: options({ customRules }) registers a runtime custom rule 
     const page = await browser.newPage();
     await page.goto('data:text/html,<html><body><div class="my-widget"></div></body></html>');
 
-    // No dedicated builder method for this yet (see ../ROADMAP.md gap #4) --
-    // .options() already forwards arbitrary engineOptions, including
-    // surea11y's customRules runtime-registration escape hatch (see
-    // ../surea11y/docs/ENGINE_OPTIONS.md).
+    // Raw .options({ customRules }) passthrough -- still supported and
+    // composes with the dedicated .withCustomRules() method (see below) --
+    // .options() forwards arbitrary engineOptions, including surea11y's
+    // customRules runtime-registration escape hatch (see
+    // https://github.com/rumoroso/surea11y-core/blob/main/docs/ENGINE_OPTIONS.md).
     const results = await new A11yCoreBuilder({ page })
       .options({ customRules: [MY_ORG_CUSTOM_RULE] })
       .analyze();
@@ -810,14 +811,14 @@ test('A11yCoreBuilder: elementRef(true) resolves against each frame\'s own docum
   }
 });
 
-test('A11yCoreBuilder: frames(true) scans a genuinely cross-origin iframe (no surea11y engine support needed for this -- see ../ROADMAP.md gap #1)', async () => {
+test('A11yCoreBuilder: frames(true) scans a genuinely cross-origin iframe (no surea11y engine support needed for this)', async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
     // example.org is IANA-reserved specifically for use in documentation/
     // testing and is about as stable a real external dependency as exists --
-    // this is the exact page used to empirically verify the claim in
-    // ../ROADMAP.md that cross-origin frame scanning needs no engine work.
+    // this is the exact page used to empirically verify that cross-origin
+    // frame scanning needs no engine work.
     await page.goto('data:text/html,<html><body><iframe src="https://example.org/"></iframe></body></html>');
     await page.waitForLoadState('networkidle').catch(() => {});
 

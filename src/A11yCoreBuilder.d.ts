@@ -1,6 +1,6 @@
 import type { Page, ElementHandle } from 'playwright';
 
-// See surea11y's docs/OUTPUT_SCHEMA.md -- this file mirrors that document's
+// See https://github.com/rumoroso/surea11y-core/blob/main/docs/OUTPUT_SCHEMA.md -- this file mirrors that document's
 // shapes exactly (plus the elementHandle field this binding adds on top when
 // .elementRef(true) is used). Keep in sync with that doc, not the other way
 // around -- it's the source of truth for what the engine actually returns.
@@ -113,7 +113,7 @@ export interface CompositeResult {
   data: { details: CompositeResultDetails };
 }
 
-/** surea11y's native top-level result shape -- see docs/OUTPUT_SCHEMA.md. */
+/** surea11y's native top-level result shape -- see https://github.com/rumoroso/surea11y-core/blob/main/docs/OUTPUT_SCHEMA.md. */
 export interface A11yCoreResult {
   engine: EngineInfo;
   url: string | null;
@@ -139,8 +139,8 @@ export interface A11yCoreMultiFrameResult {
 
 /**
  * A runtime-registered rule descriptor for `.withCustomRules()` -- the same
- * shape as an internal surea11y rule module's own export (see surea11y's
- * docs/ENGINE_OPTIONS.md). `runInPage`/`applicability` may be passed as
+ * shape as an internal surea11y rule module's own export (see
+ * https://github.com/rumoroso/surea11y-core/blob/main/docs/ENGINE_OPTIONS.md). `runInPage`/`applicability` may be passed as
  * either a real function or a function-source string -- `.withCustomRules()`
  * converts a live function to its source string for you, since it must
  * cross a page.evaluate() JSON boundary that cannot carry a live Function
