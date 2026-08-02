@@ -48,7 +48,7 @@ const { A11yCoreBuilderBase } = require('@surea11y/binding-base');
  * engine support: Playwright
  * drives every frame via CDP at the automation-process level, not as
  * in-page script, so cross-origin frame.evaluate() already just works --
- * verified empirically, see ../ROADMAP.md gap #1 for the full story.
+ * verified empirically.
  * Default off, so plain .analyze() keeps returning the single native result
  * object it always has.
  *

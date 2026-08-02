@@ -2,7 +2,6 @@
 
 // Re-exported from @surea11y/binding-base, which now holds the single
 // canonical copy shared across every surea11y binding -- see
-// ../ROADMAP.md's note on the shared-package extraction, and
 // ../binding-base/README.md for the full rationale. Kept as a
 // real file here (not just re-exporting straight from src/index.js) so
 // `require('@surea11y/playwright/src/formatFailures')` keeps working for

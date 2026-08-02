@@ -350,7 +350,7 @@ test('A11yCoreBuilder: options({ customRules }) registers a runtime custom rule 
     const page = await browser.newPage();
     await page.goto('data:text/html,<html><body><div class="my-widget"></div></body></html>');
 
-    // No dedicated builder method for this yet (see ../ROADMAP.md gap #4) --
+    // No dedicated builder method for this yet --
     // .options() already forwards arbitrary engineOptions, including
     // surea11y's customRules runtime-registration escape hatch (see
     // ../surea11y/docs/ENGINE_OPTIONS.md).
@@ -810,14 +810,14 @@ test('A11yCoreBuilder: elementRef(true) resolves against each frame\'s own docum
   }
 });
 
-test('A11yCoreBuilder: frames(true) scans a genuinely cross-origin iframe (no surea11y engine support needed for this -- see ../ROADMAP.md gap #1)', async () => {
+test('A11yCoreBuilder: frames(true) scans a genuinely cross-origin iframe (no surea11y engine support needed for this)', async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
     // example.org is IANA-reserved specifically for use in documentation/
     // testing and is about as stable a real external dependency as exists --
-    // this is the exact page used to empirically verify the claim in
-    // ../ROADMAP.md that cross-origin frame scanning needs no engine work.
+    // this is the exact page used to empirically verify that cross-origin
+    // frame scanning needs no engine work.
     await page.goto('data:text/html,<html><body><iframe src="https://example.org/"></iframe></body></html>');
     await page.waitForLoadState('networkidle').catch(() => {});
 
