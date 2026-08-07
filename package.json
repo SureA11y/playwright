@@ -36,7 +36,7 @@
     "playwright": "^1.61.1"
   },
   "scripts": {
-    "test": "node --test \"tests/**/*.test.js\"",
+    "test": "node --test tests/*.test.js",
     "example": "node examples/basic-scan.js",
     "example:e2e": "playwright test examples/playwright-test-example.spec.js"
   }
