@@ -10,28 +10,15 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
-      # Don't cancel the other versions when one fails -- knowing whether a
-      # break is version-specific is most of the diagnosis.
       fail-fast: false
       matrix:
-        # Matches @surea11y/core's supported range. This package's own engines
-        # field says >=18.13.0, but core requires ^20.19 || ^22.13 || >=24, so
-        # 18 cannot actually work here.
         node-version: [20.x, 22.x, 24.x]
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
-
       - run: npm ci
-
-      # tests/cross-browser.test.js launches firefox and webkit as well as
-      # chromium, so all three are needed.
-      - name: Install browsers
-        run: npx playwright install --with-deps chromium firefox webkit
-
+      - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm test
