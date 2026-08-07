@@ -15,7 +15,7 @@
     "url": "https://github.com/SureA11y/playwright/issues"
   },
   "engines": {
-    "node": ">=18.13.0"
+    "node": "^20.19.0 || ^22.13.0 || >=24.0.0"
   },
   "publishConfig": {
     "access": "public"
