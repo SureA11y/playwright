@@ -8,11 +8,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rumoroso/surea11y-core-playwright.git"
+    "url": "git+https://github.com/SureA11y/playwright.git"
   },
-  "homepage": "https://github.com/rumoroso/surea11y-core-playwright#readme",
+  "homepage": "https://github.com/SureA11y/playwright#readme",
   "bugs": {
-    "url": "https://github.com/rumoroso/surea11y-core-playwright/issues"
+    "url": "https://github.com/SureA11y/playwright/issues"
   },
   "engines": {
     "node": ">=18.13.0"
