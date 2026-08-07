@@ -170,6 +170,10 @@ See `@surea11y/core`'s [`BINDING_AUTHORS_GUIDE.md`](https://github.com/SureA11y/
 
 `A11yCoreBuilder` here extends `A11yCoreBuilderBase` from [`@surea11y/binding-base`](https://github.com/SureA11y/binding-base), a small shared package holding the scaffolding common to every framework binding. A new binding should depend on that package from the start.
 
+## Maintainer
+
+Maintained by [Jorge Rumoroso](https://github.com/rumoroso).
+
 ## License
 
 MIT — see [`LICENSE`](./LICENSE).
