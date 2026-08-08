@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm install -g npm@latest
+      - run: npm ci
+
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $PKG"
+            exit 1
+          fi
+
+      # The engine ships from a different repo, so a binding tag can front-run it.
+      - name: Verify the declared @surea11y/core range resolves on the registry
+        run: |
+          RANGE="$(node -p "require('./package.json').dependencies['@surea11y/core']")"
+          if ! npm view "@surea11y/core@$RANGE" version >/dev/null 2>&1; then
+            echo "::error::@surea11y/core@$RANGE does not resolve on npm — publish the engine first"
+            exit 1
+          fi
+          echo "resolves to: $(npm view "@surea11y/core@$RANGE" version | tail -1)"
+
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm test
+
+      # Tests run against the working tree, so a `files` allowlist that omits
+      # something required at runtime is invisible to them. Install the actual
+      # tarball and load it.
+      - name: Smoke-test the packed tarball
+        run: |
+          set -euo pipefail
+          TARBALL="$(npm pack --pack-destination "$RUNNER_TEMP" | tail -1)"
+          WORKDIR="$(mktemp -d)"
+          cd "$WORKDIR"
+          npm init -y >/dev/null
+          npm install "$RUNNER_TEMP/$TARBALL" >/dev/null
+          node -e "const m = require('@surea11y/playwright'); for (const k of ['A11yCoreBuilder', 'formatFailures']) if (typeof m[k] === 'undefined') throw new Error('missing export: ' + k)"
+
+      - name: Publish to npm with provenance
+        if: startsWith(github.ref, 'refs/tags/')
+        run: npm publish --provenance
+
+      - name: Manual run summary
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: echo "Checks passed. Publishing skipped because this was not a tag."
