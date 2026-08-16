@@ -16,6 +16,7 @@ export type Category = 'perceivable' | 'operable' | 'understandable' | 'robust' 
 // union stays assignable from any string rather than going stale.
 export type LocaleResolutionReason =
   | 'ok'
+  | 'primary-subtag'
   | 'unknown-locale'
   | 'partial-dictionary'
   | (string & {});
