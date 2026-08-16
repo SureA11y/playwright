@@ -1,0 +1,13 @@
+version: 2
+
+updates:
+  # Published packages carry no lockfile, so consumers resolve the engine
+  # fresh while ours stays pinned. Keeping it current is what makes CI test
+  # the pairing users actually get.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: daily
+    allow:
+      - dependency-name: '@surea11y/*'
+    open-pull-requests-limit: 5
