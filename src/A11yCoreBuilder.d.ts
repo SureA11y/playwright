@@ -12,24 +12,9 @@ export type Confidence = 'high' | 'medium' | 'low';
 export type RuleType = 'automatic' | 'manual';
 export type Category = 'perceivable' | 'operable' | 'understandable' | 'robust' | null;
 
-// The reason set is open: core can add a value in a minor release, so the
-// union stays assignable from any string rather than going stale.
-export type LocaleResolutionReason =
-  | 'ok'
-  | 'unknown-locale'
-  | 'partial-dictionary'
-  | (string & {});
-
-export interface LocaleResolution {
-  requested: string;
-  resolved: string;
-  reason: LocaleResolutionReason;
-}
-
 export interface EngineInfo {
   tag: string;
   schemaVersion: string;
-  locale: LocaleResolution;
 }
 
 export interface NormativeMapping {
