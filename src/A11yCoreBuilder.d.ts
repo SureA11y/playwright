@@ -17,6 +17,7 @@ export type Category = 'perceivable' | 'operable' | 'understandable' | 'robust' 
 export type LocaleResolutionReason =
   | 'ok'
   | 'primary-subtag'
+  | 'dictionary-not-loaded'
   | 'unknown-locale'
   | 'partial-dictionary'
   | (string & {});
