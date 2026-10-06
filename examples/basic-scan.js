@@ -34,10 +34,10 @@ async function main() {
     }
 
     // What the scan left out (an include() that matched nothing, a custom
-    // rule that didn't run): none for a plain whole-page scan like this one.
-    for (const gap of getScanGaps(results)) {
-      console.warn(`Warning: ${gap.message}`);
-    }
+    // rule that didn't run): analyze() has already warned about each one;
+    // none for a plain whole-page scan like this one.
+    const gaps = getScanGaps(results);
+    if (gaps.length) console.log(`\n${gaps.length} part(s) of the scan were left out.`);
   } finally {
     await browser.close();
   }

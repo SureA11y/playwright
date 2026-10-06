@@ -993,3 +993,58 @@ test('A11yCoreBuilder: elementRef(true) leaves elementHandle null when a shadow 
     await browser.close();
   }
 });
+
+// Captures console.warn for the length of fn(), so the gap warnings below
+// can be checked (and don't clutter the test output).
+async function captureWarnings(fn) {
+  const original = console.warn;
+  const warnings = [];
+  console.warn = (...args) => warnings.push(args.join(' '));
+  try {
+    await fn();
+  } finally {
+    console.warn = original;
+  }
+  return warnings;
+}
+
+test('A11yCoreBuilder: analyze() warns when the include() scope matched nothing, and stays quiet on a clean scan', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><img src="x.png"></body></html>');
+
+    const warnings = await captureWarnings(() => new A11yCoreBuilder({ page }).include('#mian').analyze());
+    assert.strictEqual(warnings.length, 1, warnings.join('\n'));
+    assert.ok(warnings[0].startsWith('@surea11y/playwright (data:text/html,'), warnings[0]);
+    assert.ok(warnings[0].includes('Nothing was scanned: the scan scope matched no element ("#mian").'), warnings[0]);
+
+    const none = await captureWarnings(() => new A11yCoreBuilder({ page }).analyze());
+    assert.deepStrictEqual(none, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: analyze() warns once per scanned frame about a custom rule that did not run', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(
+      'data:text/html,<html><body>' +
+      '<iframe srcdoc="%3Chtml%3E%3Cbody%3E%3Cp%3EHi%3C/p%3E%3C/body%3E%3C/html%3E"></iframe>' +
+      '</body></html>'
+    );
+    await page.waitForLoadState('networkidle').catch(() => {});
+
+    const warnings = await captureWarnings(() => new A11yCoreBuilder({ page })
+      .options({ customRules: [{ id: 'never-runs', meta: { title: 'Never runs' }, runInPage: 'not a function' }] })
+      .frames(true)
+      .analyze());
+    assert.strictEqual(warnings.length, 2, warnings.join('\n'));
+    for (const w of warnings) assert.ok(w.includes('Custom rule "never-runs" did not run'), w);
+    assert.ok(warnings[1].includes('(about:srcdoc)'), warnings[1]);
+  } finally {
+    await browser.close();
+  }
+});
