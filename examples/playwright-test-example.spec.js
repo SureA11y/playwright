@@ -17,7 +17,7 @@
  */
 
 const { test, expect } = require('playwright/test');
-const { A11yCoreBuilder, formatFailures } = require('../src/index.js');
+const { A11yCoreBuilder, formatFailures, getScanGaps } = require('../src/index.js');
 
 test('flags real accessibility issues (unlabeled button, missing alt, missing title/lang)', async ({ page }) => {
   await page.goto(
@@ -44,8 +44,12 @@ test('a well-formed page has no accessibility violations', async ({ page }) => {
     .analyze();
 
   // The real assertion shape you'd use as an accessibility gate in CI --
-  // formatFailures() turns checksResults into a readable block (rule,
-  // severity, selector, hint per occurrence) instead of a bare "not equal
-  // to []" diff, so a failure is scannable straight from CI/terminal output.
-  expect(results.checksResults, formatFailures(results.checksResults)).toEqual([]);
+  // formatFailures() turns the result into a readable block (rule,
+  // severity, selector, hint per occurrence, then anything the scan left
+  // out and the engine version) instead of a bare "not equal to []" diff,
+  // so a failure is scannable straight from CI/terminal output.
+  expect(results.checksResults, formatFailures(results)).toEqual([]);
+  // A scan that left something out (an include() that matched nothing, a
+  // custom rule that didn't run) has no failures either; fail on it too.
+  expect(getScanGaps(results), formatFailures(results)).toEqual([]);
 });
