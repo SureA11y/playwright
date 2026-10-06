@@ -55,11 +55,14 @@ An `.include()` selector that matches no element scans nothing: every rule repor
 const { A11yCoreBuilder, getScanGaps } = require('@surea11y/playwright');
 
 const results = await new A11yCoreBuilder({ page }).include('#main').analyze();
-for (const gap of getScanGaps(results)) console.warn(gap.message);
-// Nothing was scanned: the scan scope matched no element ("#main").
+const gaps = getScanGaps(results);
+// [{ kind: 'context-not-found', selectors: ['#main'],
+//    message: 'Nothing was scanned: the scan scope matched no element ("#main").' }]
 ```
 
 Each gap has a `kind`: `'context-not-found'` (nothing was scanned), `'context-partly-not-found'` (some of several selectors matched nothing), or `'custom-rule-skipped'` (a custom rule the engine could not run, one per rule, from `results.skippedCustomRules`).
+
+`.analyze()` also prints each gap with `console.warn`, once per scanned frame, prefixed with the frame's URL, for example `@surea11y/playwright (https://example.com/): Nothing was scanned: the scan scope matched no element ("#main").` The engine warns too, but in the page's console, which a Playwright run doesn't show. The warning doesn't fail anything: to fail a test on a gap, assert on `getScanGaps(results)` as below.
 
 ### Errors from the engine
 
