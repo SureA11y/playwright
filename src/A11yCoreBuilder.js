@@ -64,6 +64,8 @@ const scanInPage = eval(`(args) => {
  * // results.topFrame        -- same shape as the single-frame case above
  * // results.frames          -- array of the same native result shape, one per sub-frame
  *
+ * include() scopes the top frame only; every sub-frame is scanned whole.
+ *
  * Unlike script-injection-based accessibility engines (which need a
  * postMessage-based protocol, runPartial/finishRun, to reach cross-origin
  * iframes, since they're injected as a plain <script> and are fully subject
@@ -157,11 +159,11 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
 
     // A Playwright Page and a Frame both expose the same .evaluate(fn, arg)
     // and .url() shape, so this works unchanged for either.
-    const runInFrame = async (frameOrPage) => {
+    const runInFrame = async (frameOrPage, frameContextSelector) => {
       const frameUrl = this._url || (typeof frameOrPage.url === 'function' ? frameOrPage.url() : null);
       const result = rethrowEngineError(await frameOrPage.evaluate(scanInPage, {
         url: frameUrl,
-        contextSelector,
+        contextSelector: frameContextSelector,
         engineOptions,
         runOnly
       }));
@@ -169,20 +171,26 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
     };
 
     if (!this._scanFrames) {
-      return this._applyReportOnly(await runInFrame(this._page));
+      return this._applyReportOnly(await runInFrame(this._page, contextSelector));
     }
 
     const mainFrame = this._page.mainFrame();
-    const topFrame = this._applyReportOnly(await runInFrame(mainFrame));
+    const topFrame = this._applyReportOnly(await runInFrame(mainFrame, contextSelector));
 
     // page.frames() includes the main frame itself -- exclude it here since
     // it's already covered by topFrame above, so callers don't have to
     // de-duplicate it themselves out of the frames array.
     const subFrames = this._page.frames().filter((f) => f !== mainFrame);
+    // include() scopes the top frame only: each sub-frame is scanned whole,
+    // as core's own runa11yCoreAcrossFrames does. Since @surea11y/core
+    // 1.10.0 a contextSelector that matches nothing scans nothing, so
+    // passing the top frame's selector on would leave out every frame that
+    // doesn't happen to contain the same element (before 1.10.0 such a frame
+    // was silently scanned whole). exclude() still applies in every frame.
     const frames = [];
     for (const frame of subFrames) {
       try {
-        frames.push(this._applyReportOnly(await runInFrame(frame)));
+        frames.push(this._applyReportOnly(await runInFrame(frame, null)));
       } catch (e) {
         // A frame can detach/navigate away mid-scan, or be a sandboxed
         // frame the browser blocks scripting in -- don't let one bad frame

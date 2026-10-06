@@ -911,3 +911,35 @@ test('A11yCoreBuilder: withTags()/withRules()/disableTags()/disableRules() throw
     }
   }
 });
+
+test('A11yCoreBuilder: include() with frames(true) scopes the top frame only -- each sub-frame is scanned whole', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    // The sub-frame has no #main. Since @surea11y/core 1.10.0 a selector
+    // matching nothing scans nothing, so handing the top frame's selector to
+    // the sub-frame would hide its missing alt.
+    await page.goto(
+      'data:text/html,<html><body>' +
+      '<main id="main"><img src="a.png" alt="A"></main><img src="outside.png">' +
+      '<iframe srcdoc="%3Chtml%3E%3Cbody%3E%3Cimg src=x.png%3E%3C/body%3E%3C/html%3E"></iframe>' +
+      '</body></html>'
+    );
+    await page.waitForLoadState('networkidle').catch(() => {});
+
+    const results = await new A11yCoreBuilder({ page }).include('#main').frames(true).analyze();
+
+    assert.strictEqual(results.topFrame.contextSelector, '#main');
+    assert.deepStrictEqual(results.topFrame.contextMatch, { elementCount: 1, unmatchedSelectors: [] });
+    const topImg = results.topFrame.checksResults.find((r) => r.ruleId === 'img-alt-present');
+    assert.strictEqual(topImg.outcome, 'pass'); // the image outside #main is out of scope
+
+    assert.strictEqual(results.frames.length, 1);
+    assert.strictEqual(results.frames[0].contextSelector, null);
+    assert.strictEqual(results.frames[0].contextMatch, null);
+    const frameImg = results.frames[0].checksResults.find((r) => r.ruleId === 'img-alt-present');
+    assert.strictEqual(frameImg.outcome, 'fail');
+  } finally {
+    await browser.close();
+  }
+});
