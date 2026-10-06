@@ -1,7 +1,12 @@
 'use strict';
 
 const { runa11yCoreInPage } = require('@surea11y/core');
-const { A11yCoreBuilderBase, createInPageScan, rethrowEngineError } = require('@surea11y/binding-base');
+const {
+  A11yCoreBuilderBase,
+  createInPageScan,
+  rethrowEngineError,
+  queryOccurrenceElement
+} = require('@surea11y/binding-base');
 
 // Playwright's page.evaluate(fn, arg) (and frame.evaluate(fn, arg), same
 // signature) only accepts ONE arg value -- page.evaluate(fn, a, b, c, d)
@@ -24,6 +29,17 @@ const inPageScan = createInPageScan(runa11yCoreInPage);
 const scanInPage = eval(`(args) => {
   const inPageScan = ${inPageScan.toString()};
   return inPageScan(args.url, args.contextSelector, args.engineOptions, args.runOnly);
+}`);
+
+// Finds an occurrence's element through its shadow hosts. Since
+// @surea11y/core 1.10.0 an occurrence inside a shadow tree carries
+// `shadowHostSelectors`, and its `selector` holds only inside the last
+// host's shadow root, so frame.$(selector) finds another element or none.
+// Same single-argument wrapping as scanInPage, for evaluateHandle().
+// eslint-disable-next-line no-eval
+const findOccurrenceElement = eval(`(args) => {
+  const queryOccurrenceElement = ${queryOccurrenceElement.toString()};
+  return queryOccurrenceElement(args.selector, args.shadowHostSelectors);
 }`);
 
 /**
@@ -206,11 +222,11 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
   }
 
   /**
-   * Resolves occurrence.selector to a live ElementHandle for every
-   * fail/cantTell occurrence, scoped to frameOrPage's own document (a
-   * Playwright Page and Frame both expose the same .$(selector) shape).
-   * Mutates and returns the same result object -- it's a fresh object from
-   * this scan, not shared external state.
+   * Resolves each occurrence to a live ElementHandle, scoped to
+   * frameOrPage's own document (a Playwright Page and Frame both expose the
+   * same .evaluateHandle(fn, arg) shape), through its shadow hosts when it
+   * has `shadowHostSelectors`. Mutates and returns the same result object
+   * -- it's a fresh object from this scan, not shared external state.
    */
   async _attachElementRefs(frameOrPage, result) {
     if (!Array.isArray(result.checksResults)) return result;
@@ -222,10 +238,20 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         // rules) can carry "" -- not every occurrence resolves to one element,
         // so leave elementHandle null rather than passing "" to .$() (which
         // throws, it's not a valid CSS selector).
-        occurrence.elementHandle = occurrence.selector ? await frameOrPage.$(occurrence.selector) : null;
+        occurrence.elementHandle = occurrence.selector ? await this._findElement(frameOrPage, occurrence) : null;
       }
     }
     return result;
+  }
+
+  async _findElement(frameOrPage, occurrence) {
+    const handle = await frameOrPage.evaluateHandle(findOccurrenceElement, {
+      selector: occurrence.selector,
+      shadowHostSelectors: occurrence.shadowHostSelectors || null
+    });
+    const element = handle.asElement();
+    if (!element) await handle.dispose();
+    return element;
   }
 }
 

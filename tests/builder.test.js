@@ -943,3 +943,53 @@ test('A11yCoreBuilder: include() with frames(true) scopes the top frame only -- 
     await browser.close();
   }
 });
+
+test('A11yCoreBuilder: elementRef(true) resolves a shadow-DOM occurrence through its shadow hosts', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(
+      '<html><body>' +
+      '<img src="light.png" alt="Light DOM image">' +
+      '<my-card id="card"></my-card>' +
+      '<script>' +
+      'document.getElementById("card").attachShadow({ mode: "open" }).innerHTML = \'<p>Card</p><img src="shadow.png">\';' +
+      '</script>' +
+      '</body></html>'
+    );
+
+    const results = await new A11yCoreBuilder({ page }).withRules(['img-alt-present']).elementRef(true).analyze();
+
+    const rule = results.checksResults.find((r) => r.ruleId === 'img-alt-present');
+    assert.strictEqual(rule.outcome, 'fail');
+    assert.strictEqual(rule.occurrences.length, 1);
+    const [occurrence] = rule.occurrences;
+    // The selector holds inside the shadow root only; the host leads there.
+    // Looked up in the document (even with Playwright's shadow-piercing
+    // page.$()), it finds the light-DOM image, which has its alt.
+    assert.deepStrictEqual(occurrence.shadowHostSelectors, ['#card']);
+    const viaDocument = await page.$(occurrence.selector);
+    assert.strictEqual(await viaDocument.evaluate((el) => el.getAttribute('src')), 'light.png');
+
+    assert.ok(occurrence.elementHandle, 'occurrence should carry a live ElementHandle');
+    assert.strictEqual(await occurrence.elementHandle.evaluate((el) => el.getAttribute('src')), 'shadow.png');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: elementRef(true) leaves elementHandle null when a shadow host is gone by the time it resolves', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<html><body><img src="x.png"></body></html>');
+
+    const builder = new A11yCoreBuilder({ page });
+    const result = await builder._attachElementRefs(page, {
+      checksResults: [{ occurrences: [{ selector: 'img', shadowHostSelectors: ['#no-such-host'] }] }]
+    });
+    assert.strictEqual(result.checksResults[0].occurrences[0].elementHandle, null);
+  } finally {
+    await browser.close();
+  }
+});
