@@ -1,5 +1,14 @@
 import type { Page, ElementHandle } from 'playwright';
 
+/**
+ * What analyze() rejects with when @surea11y/core refuses its input, with
+ * the engine's `code`: `INVALID_RUN_ONLY` (withRules()/withTags() named no
+ * rule or tag it knows) or `INVALID_CONTEXT_SELECTOR` (an include()
+ * selector the browser can't parse; `selector` names it).
+ */
+export { EngineError } from '@surea11y/binding-base';
+export type { EngineErrorCode } from '@surea11y/binding-base';
+
 // See surea11y's docs/OUTPUT_SCHEMA.md -- this file mirrors that document's
 // shapes exactly (plus the elementHandle field this binding adds on top when
 // .elementRef(true) is used). Keep in sync with that doc, not the other way
@@ -213,7 +222,11 @@ export class A11yCoreBuilder {
   /** Opt in to resolving each fail/cantTell occurrence's selector to a live ElementHandle. */
   elementRef(enabled?: boolean): this;
 
-  /** Runs the scan. Returns { topFrame, frames } instead of a single result when .frames(true) was used. */
+  /**
+   * Runs the scan. Returns { topFrame, frames } instead of a single result
+   * when .frames(true) was used. Rejects with an EngineError when the engine
+   * refuses the rule/tag lists or an include() selector.
+   */
   analyze(): Promise<A11yCoreResult | A11yCoreMultiFrameResult>;
 }
 

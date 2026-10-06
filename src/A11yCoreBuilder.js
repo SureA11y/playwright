@@ -1,7 +1,30 @@
 'use strict';
 
 const { runa11yCoreInPage } = require('@surea11y/core');
-const { A11yCoreBuilderBase } = require('@surea11y/binding-base');
+const { A11yCoreBuilderBase, createInPageScan, rethrowEngineError } = require('@surea11y/binding-base');
+
+// Playwright's page.evaluate(fn, arg) (and frame.evaluate(fn, arg), same
+// signature) only accepts ONE arg value -- page.evaluate(fn, a, b, c, d)
+// throws "Too many arguments. If you need to pass more than 1 argument to
+// the function wrap them in an object." (confirmed against a real Playwright
+// page -- see ../core/docs/INTEGRATION.md for the full story, including why
+// this differs from Puppeteer's variadic form). The scan takes 4 positional
+// args, so wrap it in a single-arg function that destructures one options
+// object, embedding the scan's own source so the wrapper stays fully
+// self-contained once serialized into the page (it has zero free vars of
+// its own -- see ../core/docs/RULE_AUTHORING.md for why that matters).
+//
+// The scan is core's runa11yCoreInPage wrapped by createInPageScan(), which
+// returns an engine error (INVALID_RUN_ONLY, INVALID_CONTEXT_SELECTOR) as a
+// plain object instead of throwing it: page.evaluate() keeps a thrown
+// error's message but drops its `code`. rethrowEngineError() below throws
+// it again on this side as an EngineError with `code` (and `selector`).
+const inPageScan = createInPageScan(runa11yCoreInPage);
+// eslint-disable-next-line no-eval
+const scanInPage = eval(`(args) => {
+  const inPageScan = ${inPageScan.toString()};
+  return inPageScan(args.url, args.contextSelector, args.engineOptions, args.runOnly);
+}`);
 
 /**
  * Playwright binding for surea11y -- scans a real, already-rendered page.
@@ -120,40 +143,28 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
 
   /**
    * Runs the scan and returns @surea11y/core's native result object.
+   *
+   * Rejects with an `EngineError` (from @surea11y/binding-base) carrying
+   * the engine's `code` when the engine refuses the input:
+   * `INVALID_RUN_ONLY` when none of the rule IDs, or none of the tags, given
+   * to withRules()/withTags() is one it knows, and
+   * `INVALID_CONTEXT_SELECTOR` (with `selector`) for an include() selector
+   * the browser can't parse.
    * @returns {Promise<object>} see ../core/docs/OUTPUT_SCHEMA.md
    */
   async analyze() {
     const { contextSelector, engineOptions, runOnly } = this._buildEngineArgs();
 
-    // Playwright's page.evaluate(fn, arg) (and frame.evaluate(fn, arg), same
-    // signature) only accepts ONE arg value -- page.evaluate(fn, a, b, c, d)
-    // throws "Too many arguments. If you need to pass more than 1 argument
-    // to the function wrap them in an object." (confirmed against a real
-    // Playwright page -- see ../core/docs/INTEGRATION.md for the
-    // full story, including why this differs from Puppeteer's variadic
-    // form). runa11yCoreInPage itself takes 4 positional args, so wrap it in
-    // a single-arg function that destructures one options object, embedding
-    // runa11yCoreInPage's own source via .toString() so the wrapper stays
-    // fully self-contained once serialized into the page (it has zero free
-    // vars of its own -- see ../core/docs/RULE_AUTHORING.md for why that
-    // matters).
-    const wrapperSource = `(args) => {
-      const runa11yCoreInPage = ${runa11yCoreInPage.toString()};
-      return runa11yCoreInPage(args.url, args.contextSelector, args.engineOptions, args.runOnly);
-    }`;
-    // eslint-disable-next-line no-eval
-    const wrapperFn = eval(wrapperSource);
-
     // A Playwright Page and a Frame both expose the same .evaluate(fn, arg)
     // and .url() shape, so this works unchanged for either.
     const runInFrame = async (frameOrPage) => {
       const frameUrl = this._url || (typeof frameOrPage.url === 'function' ? frameOrPage.url() : null);
-      const result = await frameOrPage.evaluate(wrapperFn, {
+      const result = rethrowEngineError(await frameOrPage.evaluate(scanInPage, {
         url: frameUrl,
         contextSelector,
         engineOptions,
         runOnly
-      });
+      }));
       return this._elementRef ? this._attachElementRefs(frameOrPage, result) : result;
     };
 

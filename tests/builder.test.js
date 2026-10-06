@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { chromium } = require('playwright');
-const { A11yCoreBuilder } = require('../src/index.js');
+const { A11yCoreBuilder, EngineError } = require('../src/index.js');
 
 // Shared across the customRules tests below -- reported outcome depends on
 // whether ctx.document has a .my-widget element. runInPage must be a
@@ -829,5 +829,85 @@ test('A11yCoreBuilder: frames(true) scans a genuinely cross-origin iframe (no su
     assert.ok(results.frames[0].checksResults.length > 0);
   } finally {
     await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: withRules() naming no known rule rejects with an EngineError carrying INVALID_RUN_ONLY', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><img src="x.png"></body></html>');
+
+    // A typo used to select nothing and pass the scan; since @surea11y/core
+    // 1.10.0 the engine throws, and the code survives page.evaluate().
+    await assert.rejects(
+      () => new A11yCoreBuilder({ page }).withRules(['img-alt-presnt']).analyze(),
+      (err) => {
+        assert.ok(err instanceof EngineError);
+        assert.strictEqual(err.name, 'EngineError');
+        assert.strictEqual(err.code, 'INVALID_RUN_ONLY');
+        assert.strictEqual(err.selector, null);
+        return true;
+      }
+    );
+    await assert.rejects(
+      () => new A11yCoreBuilder({ page }).withTags(['wcag2.2aa']).analyze(),
+      (err) => err instanceof EngineError && err.code === 'INVALID_RUN_ONLY'
+    );
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: an include() selector the browser cannot parse rejects with INVALID_CONTEXT_SELECTOR and the selector', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html><body><main><img src="x.png"></main></body></html>');
+
+    await assert.rejects(
+      () => new A11yCoreBuilder({ page }).include('main').include('#[broken').analyze(),
+      (err) => {
+        assert.ok(err instanceof EngineError);
+        assert.strictEqual(err.code, 'INVALID_CONTEXT_SELECTOR');
+        assert.strictEqual(err.selector, '#[broken');
+        return true;
+      }
+    );
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: an engine error from the top frame rejects a frames(true) scan rather than being recorded as a frame error', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(
+      'data:text/html,<html><body>' +
+      '<iframe srcdoc="%3Chtml%3E%3Cbody%3E%3Cimg src=x.png%3E%3C/body%3E%3C/html%3E"></iframe>' +
+      '</body></html>'
+    );
+    await page.waitForLoadState('networkidle').catch(() => {});
+
+    await assert.rejects(
+      () => new A11yCoreBuilder({ page }).frames(true).withRules(['no-such-rule']).analyze(),
+      (err) => err instanceof EngineError && err.code === 'INVALID_RUN_ONLY'
+    );
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: withTags()/withRules()/disableTags()/disableRules() throw at the call for undefined or an empty string', () => {
+  const page = { evaluate: async () => {} };
+  for (const method of ['withTags', 'withRules', 'disableTags', 'disableRules']) {
+    for (const value of [undefined, '', [undefined], ['']]) {
+      assert.throws(
+        () => new A11yCoreBuilder({ page })[method](value),
+        (err) => err instanceof TypeError && err.code === 'INVALID_RUN_ONLY',
+        `${method}(${JSON.stringify(value)})`
+      );
+    }
   }
 });
