@@ -6,11 +6,14 @@ import {
   A11yCoreBuilder,
   EngineError,
   formatFailures,
+  formatOccurrenceLocation,
+  getScanGaps,
   type A11yCoreResult,
   type A11yCoreMultiFrameResult,
   type CheckResult,
   type EngineErrorCode,
-  type Occurrence
+  type Occurrence,
+  type ScanGap
 } from '../../src/index';
 
 declare const page: Page;
@@ -51,6 +54,7 @@ async function main(): Promise<void> {
       const o: Occurrence = occurrence;
       const hosts: string[] | undefined = o.shadowHostSelectors;
       const path: number[] | null = o.structuralPath;
+      const where: string = formatOccurrenceLocation(o);
       if (o.elementHandle) await o.elementHandle.screenshot();
     }
   }
@@ -59,6 +63,15 @@ async function main(): Promise<void> {
   const asCore: ScanResult = result;
 
   const message: string = formatFailures(result.checksResults, { outcomes: ['fail'] });
+  const whole: string = formatFailures(result);
+  const gaps: ScanGap[] = getScanGaps(result);
+  for (const gap of gaps) {
+    if (gap.kind === 'custom-rule-skipped') {
+      const id: string | null = gap.rule.id;
+    } else {
+      const selectors: string[] = gap.selectors;
+    }
+  }
 
   try {
     await new A11yCoreBuilder({ page }).withRules(['img-alt-present']).analyze();

@@ -158,11 +158,30 @@ export class A11yCoreBuilder {
 }
 
 /**
- * Formats a checksResults array into a short, human-readable block -- one
- * entry per occurrence, not per rule. Meant for an assertion library's
- * failure-message parameter, e.g.
- * `expect(results.checksResults, formatFailures(results.checksResults)).toEqual([])`.
- * Deliberately framework-agnostic -- no dependency on any particular
- * `expect` implementation.
+ * Formats a scan result, or its checksResults array, into a short,
+ * human-readable block -- one entry per occurrence, not per rule, located
+ * through its shadow hosts (`host >>> selector`). Meant for an assertion
+ * library's failure-message parameter, e.g.
+ * `expect(results.checksResults, formatFailures(results)).toEqual([])`.
+ * Given the whole result, it also lists what the scan left out
+ * (getScanGaps()) and ends with the @surea11y/core release that produced
+ * it. Throws a TypeError for a frames(true) result: format `topFrame` and
+ * each frame on its own. Deliberately framework-agnostic -- no dependency
+ * on any particular `expect` implementation.
  */
-export function formatFailures(checksResults: CheckResult[], opts?: { outcomes?: Outcome[] }): string;
+export function formatFailures(
+  input: A11yCoreResult | ReadonlyArray<CheckResult>,
+  opts?: { outcomes?: Outcome[] }
+): string;
+
+/**
+ * What a scan result says it left out, which its checksResults alone would
+ * pass over as clean: an include() scope that matched no element
+ * (`context-not-found`, nothing was scanned), some include() selectors that
+ * matched nothing (`context-partly-not-found`), and each custom rule that
+ * did not run (`custom-rule-skipped`). Each gap has a `message`. Throws a
+ * TypeError for a frames(true) result: call it on `topFrame` and on each
+ * scanned frame.
+ */
+export { getScanGaps, formatOccurrenceLocation } from '@surea11y/binding-base';
+export type { ScanGap, OccurrenceLocation } from '@surea11y/binding-base';
