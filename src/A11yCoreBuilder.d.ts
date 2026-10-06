@@ -1,4 +1,50 @@
 import type { Page, ElementHandle } from 'playwright';
+import type * as Core from '@surea11y/core';
+
+// The result shapes are @surea11y/core's own types (shipped with it since
+// 1.9.0, and checked there against real scan results), so they follow the
+// engine instead of a copy of its docs. This file only adds what the
+// binding puts on top: `elementHandle` on an occurrence with
+// .elementRef(true), and the { topFrame, frames } shape of .frames(true).
+// Every name this file exported before is still exported.
+
+import type {
+  Outcome,
+  OutcomeNormalized,
+  Severity,
+  Confidence,
+  RuleType,
+  LocaleResolution,
+  RenderingEnvironment,
+  EngineInfo,
+  NormativeMapping,
+  VisibilityFilter,
+  Uncertainty,
+  UncertaintyCode,
+  Margin,
+  MarginDeclaration,
+  ContextMatch,
+  CompositeResult
+} from '@surea11y/core';
+
+export type {
+  Outcome,
+  OutcomeNormalized,
+  Severity,
+  Confidence,
+  RuleType,
+  LocaleResolution,
+  RenderingEnvironment,
+  EngineInfo,
+  NormativeMapping,
+  VisibilityFilter,
+  Uncertainty,
+  UncertaintyCode,
+  Margin,
+  MarginDeclaration,
+  ContextMatch,
+  CompositeResult
+};
 
 /**
  * What analyze() rejects with when @surea11y/core refuses its input, with
@@ -9,146 +55,27 @@ import type { Page, ElementHandle } from 'playwright';
 export { EngineError } from '@surea11y/binding-base';
 export type { EngineErrorCode } from '@surea11y/binding-base';
 
-// See surea11y's docs/OUTPUT_SCHEMA.md -- this file mirrors that document's
-// shapes exactly (plus the elementHandle field this binding adds on top when
-// .elementRef(true) is used). Keep in sync with that doc, not the other way
-// around -- it's the source of truth for what the engine actually returns.
+export type Category = Core.RuleMeta['category'];
+export type LocaleResolutionReason = Core.LocaleResolution['reason'];
+export type CheckResultMeta = Core.RuleMeta;
+export type CompositeResultDetails = Core.CompositeResult['data']['details'];
 
-export type Outcome = 'pass' | 'fail' | 'cantTell' | 'notApplicable';
-export type OutcomeNormalized = 'pass' | 'fail' | 'cantTell' | 'inapplicable';
-export type Severity = 'minor' | 'moderate' | 'serious' | 'critical';
-export type Confidence = 'high' | 'medium' | 'low';
-export type RuleType = 'automatic' | 'manual';
-export type Category = 'perceivable' | 'operable' | 'understandable' | 'robust' | null;
-
-// The reason set is open: core can add a value in a minor release, so the
-// union stays assignable from any string rather than going stale.
-export type LocaleResolutionReason =
-  | 'ok'
-  | 'primary-subtag'
-  | 'dictionary-not-loaded'
-  | 'unknown-locale'
-  | 'partial-dictionary'
-  | (string & {});
-
-export interface LocaleResolution {
-  requested: string;
-  resolved: string;
-  reason: LocaleResolutionReason;
-}
-
-export interface EngineInfo {
-  tag: string;
-  schemaVersion: string;
-  locale: LocaleResolution;
-}
-
-export interface NormativeMapping {
-  standard: string;
-  version: string;
-  requirement: string;
-  title: string;
-  conformanceLevel: string;
-}
-
-export interface CheckResultMeta {
-  ruleId: string;
-  ruleInterfaceVersion: string;
-  ruleVersion: string;
-  normative: boolean;
-  atomic: boolean;
-  category: Category;
-  normativeMappings: NormativeMapping[];
-  standard: string | null;
-  applicability: string;
-  expectation: string;
-  references: string[];
-  requirements: Record<string, unknown> | null;
-  mappings: Record<string, unknown> | null;
-}
-
-export interface VisibilityFilter {
-  targetSet: string;
-  accEligible: boolean | null;
-  reasons: string[];
-}
-
-export interface Occurrence {
-  selector: string;
-  html: string;
-  structuralPath: number[] | null;
-  summary: string;
-  hint: string;
-  i18n: { summaryKey: string; hintKey: string; params: Record<string, unknown> } | null;
-  data: {
-    visibilityFilter?: VisibilityFilter;
-    details?: Record<string, unknown>;
-  };
+export interface Occurrence extends Core.Occurrence {
   /**
    * Only present when `.elementRef(true)` was used. `null` when this
    * occurrence has no single resolvable target element (e.g. `selector` was
-   * `""`) -- see A11yCoreBuilder#elementRef.
+   * `""`, or a shadow host on the way is gone) -- see A11yCoreBuilder#elementRef.
    */
   elementHandle?: ElementHandle | null;
 }
 
-export interface CheckResult {
-  ruleId: string;
-  outcome: Outcome;
-  outcomeNormalized: OutcomeNormalized;
-  severity: Severity;
-  confidence: Confidence;
-  type: RuleType;
+export interface CheckResult extends Omit<Core.CheckResult, 'occurrences'> {
   occurrences: Occurrence[];
-  title: string;
-  description: string;
-  i18n: { titleKey: string; descriptionKey: string } | null;
-  meta: CheckResultMeta;
-  engineOptions: Record<string, unknown>;
-  schemaVersion: string;
-  /** Present only if the rule threw, or the manual-fail-to-cantTell coercion fired. */
-  error?: string;
-}
-
-export interface CompositeResultDetails {
-  reasonCode: string;
-  checksIds: string[];
-  contributors: Array<{ testId: string; outcome: string; severity: string | null }>;
-  metrics: {
-    failCount: number;
-    cantTellCount: number;
-    notApplicableCount: number;
-    passCount: number;
-    missingCount: number;
-  };
-}
-
-export interface CompositeResult {
-  ruleId: string;
-  outcome: Outcome;
-  severity: Severity;
-  confidence: Confidence;
-  type: RuleType;
-  title: string;
-  description: string;
-  meta: CheckResultMeta;
-  engineOptions: Record<string, unknown>;
-  schemaVersion: string;
-  /** Always empty -- composites are rollups, not element-level findings. */
-  occurrences: [];
-  data: { details: CompositeResultDetails };
 }
 
 /** surea11y's native top-level result shape -- see docs/OUTPUT_SCHEMA.md. */
-export interface A11yCoreResult {
-  engine: EngineInfo;
-  url: string | null;
-  title: string | null;
-  timestamp: string | null;
-  perfStats: Record<string, unknown> | null;
-  contextSelector: string | string[] | null;
+export interface A11yCoreResult extends Omit<Core.ScanResult, 'checksResults'> {
   checksResults: CheckResult[];
-  rulesResults: CompositeResult[];
 }
 
 /** A sub-frame that couldn't be scanned (detached, navigated away, or sandboxed). */
