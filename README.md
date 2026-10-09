@@ -216,13 +216,13 @@ Invalid input (a missing/empty `id`, or a `runInPage`/`applicability` that's nei
 A pack brings rules, variants of core's rules, a standard or a checklist, and their profiles and messages, from a package of its own (see core's [`ENGINE_OPTIONS.md`, "Packs"](https://github.com/SureA11y/core/blob/main/docs/ENGINE_OPTIONS.md#packs--rules-and-standards-from-outside-core)). `.withPacks()` registers them in the page, and in every frame with `.frames(true)`, before scanning; a profile of theirs runs through `.options({ profile })`. Packs need `@surea11y/core` 1.11 or later.
 
 ```js
-const rgaa = require('@surea11y/rgaa');
+const rgaa = require('@surea11y/pack-rgaa');
 
 const result = await new A11yCoreBuilder({ page })
   .withPacks(rgaa)
   .options({ profile: 'rgaa-4.1.2' })
   .analyze();
-result.engine.packs; // ['@surea11y/rgaa@1.0.0']
+result.engine.packs; // ['@surea11y/pack-rgaa@1.0.0']
 ```
 
 ### Element addressing beyond a CSS selector
