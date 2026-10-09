@@ -142,6 +142,11 @@ export class A11yCoreBuilder {
   options(partialEngineOptions: Record<string, unknown>): this;
   /** Register one or more custom rules for just this scan. Call multiple times to accumulate. */
   withCustomRules(rules: CustomRuleDescriptor | CustomRuleDescriptor[]): this;
+  /**
+   * Packs from `@surea11y/core/pack` (core 1.11 or later): registered in each
+   * frame before the scan, and named in `engineOptions.packs`.
+   */
+  withPacks(packs: object | object[]): this;
   /** Post-filter checksResults down to only the given outcomes. */
   reportOnly(outcomes: Outcome | Outcome[]): this;
   /** Opt in to also scanning every sub-frame on the page (including cross-origin iframes). */

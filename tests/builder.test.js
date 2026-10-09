@@ -1048,3 +1048,89 @@ test('A11yCoreBuilder: analyze() warns once per scanned frame about a custom rul
     await browser.close();
   }
 });
+
+// A pack (@surea11y/core/pack, plain object form): a rule, a 7:1 variant of
+// contrast-minimum, and a checklist profile with one item.
+const ACME_PACK = {
+  name: '@acme/a11y-rules',
+  version: '1.0.0',
+  namespace: 'acme',
+  core: '*',
+  title: 'Acme policy',
+  rules: [
+    {
+      id: 'acme-no-widget',
+      meta: { title: 'No widget', tags: ['house-rules'] },
+      runInPage(ctx) {
+        const el = ctx.document.querySelector('.my-widget');
+        return el ? { outcome: 'fail', occurrences: [{ __node: el }] } : { outcome: 'pass' };
+      }
+    }
+  ],
+  variants: [
+    {
+      id: 'acme-contrast-enhanced',
+      from: 'contrast-minimum',
+      config: { normalTextRatio: 7, largeTextRatio: 4.5 },
+      meta: {
+        title: 'Text contrast is at least 7:1',
+        tags: ['house-rules'],
+        i18n: { titleKey: 'acmeContrastEnhanced_title', descriptionKey: 'acmeContrastEnhanced_description' }
+      }
+    }
+  ],
+  dictionaries: {
+    en: {
+      acmeContrastEnhanced_title: 'Text contrast is at least 7:1',
+      acmeContrastEnhanced_description: 'Checks text contrast at 7:1.'
+    }
+  },
+  profiles: { 'acme-1': { tags: ['wcag2a', 'wcag2aa', 'house-rules'] } },
+  rollups: [{ id: 'acme-text', title: 'Text', checksIds: ['contrast-minimum', 'acme-contrast-enhanced'] }]
+};
+
+test('A11yCoreBuilder: withPacks() runs a pack in the page, its profile and variant included', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(
+      'data:text/html,<html lang="en"><head><title>t</title></head><body><main>' +
+      '<div class="my-widget">W</div><p style="color:%23767676;background:%23fff">Grey</p></main></body></html>'
+    );
+    const result = await new A11yCoreBuilder({ page })
+      .withPacks(ACME_PACK)
+      .options({ profile: 'acme-1' })
+      .analyze();
+    assert.deepStrictEqual(result.engine.packs, ['@acme/a11y-rules@1.0.0']);
+    assert.strictEqual(result.engine.profile, 'acme-1');
+    const outcome = (id) => result.checksResults.find((r) => r.ruleId === id).outcome;
+    assert.strictEqual(outcome('acme-no-widget'), 'fail');
+    // #767676 on white is 4.54:1: core's rule passes, the 7:1 variant fails.
+    assert.strictEqual(outcome('contrast-minimum'), 'pass');
+    assert.strictEqual(outcome('acme-contrast-enhanced'), 'fail');
+    assert.strictEqual(result.rulesResults.find((r) => r.ruleId === 'acme-text').outcome, 'fail');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: withPacks() runs the pack in every frame when combined with frames(true)', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(
+      'data:text/html,<html><body>' +
+      '<div class="my-widget"></div>' +
+      '<iframe srcdoc="%3Chtml%3E%3Cbody%3E%3Cdiv class=my-widget%3E%3C/div%3E%3C/body%3E%3C/html%3E"></iframe>' +
+      '</body></html>'
+    );
+    await page.waitForLoadState('networkidle').catch(() => {});
+    const results = await new A11yCoreBuilder({ page }).frames(true).withPacks(ACME_PACK).analyze();
+    for (const r of [results.topFrame, results.frames[0]]) {
+      assert.deepStrictEqual(r.engine.packs, ['@acme/a11y-rules@1.0.0']);
+      assert.strictEqual(r.checksResults.find((c) => c.ruleId === 'acme-no-widget').outcome, 'fail');
+    }
+  } finally {
+    await browser.close();
+  }
+});
