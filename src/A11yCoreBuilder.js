@@ -173,11 +173,15 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    */
   async analyze() {
     const { contextSelector, engineOptions, runOnly } = this._buildEngineArgs();
+    // The script that registers withPacks()'s packs in a frame, which the
+    // scan names in engineOptions.packs; null without packs.
+    const packScript = this._packScript();
 
     // A Playwright Page and a Frame both expose the same .evaluate(fn, arg)
     // and .url() shape, so this works unchanged for either.
     const runInFrame = async (frameOrPage, frameContextSelector) => {
       const frameUrl = this._url || (typeof frameOrPage.url === 'function' ? frameOrPage.url() : null);
+      if (packScript) await frameOrPage.evaluate(packScript);
       const result = rethrowEngineError(await frameOrPage.evaluate(scanInPage, {
         url: frameUrl,
         contextSelector: frameContextSelector,
