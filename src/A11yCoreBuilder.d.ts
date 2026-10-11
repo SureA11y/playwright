@@ -49,11 +49,14 @@ export type {
 /**
  * What analyze() rejects with when @surea11y/core refuses its input, with
  * the engine's `code`: `INVALID_RUN_ONLY` (withRules()/withTags() named no
- * rule or tag it knows) or `INVALID_CONTEXT_SELECTOR` (an include()
- * selector the browser can't parse; `selector` names it).
+ * rule or tag it knows), `INVALID_CONTEXT_SELECTOR` (an include() selector
+ * the browser can't parse; `selector` names it), `INVALID_ENGINE_OPTIONS`
+ * (an option `strictOptions: true` rejects) or `PAGE_BUILTINS_BROKEN` (the
+ * page's scripts broke a JavaScript built-in the engine relies on).
  */
 export { EngineError } from '@surea11y/binding-base';
-export type { EngineErrorCode } from '@surea11y/binding-base';
+export type { EngineErrorCode, PackLike, WcagVersion, WcagLevel } from '@surea11y/binding-base';
+import type { PackLike, WcagVersion, WcagLevel } from '@surea11y/binding-base';
 
 export type Category = Core.RuleMeta['category'];
 export type LocaleResolutionReason = Core.LocaleResolution['reason'];
@@ -138,6 +141,14 @@ export class A11yCoreBuilder {
   withRules(ruleIds: string | string[]): this;
   /** Never run these specific rule IDs (applied after withRules). */
   disableRules(ruleIds: string | string[]): this;
+  /**
+   * Run the rules for a WCAG conformance target: `withWcag('2.2', 'AA')`
+   * runs those of WCAG 2.2's A and AA criteria. withTags()/withRules() add
+   * to them. A later call replaces the target.
+   */
+  withWcag(version: WcagVersion | 2.0 | 2.1 | 2.2, level?: WcagLevel): this;
+  /** Also run the best-practice rules, those that name no WCAG criterion. */
+  withBestPractices(enabled?: boolean): this;
   /** Merge arbitrary engineOptions (locale, contrast.mode, policyContract, ...). */
   options(partialEngineOptions: Record<string, unknown>): this;
   /** Register one or more custom rules for just this scan. Call multiple times to accumulate. */
@@ -146,7 +157,7 @@ export class A11yCoreBuilder {
    * Packs from `@surea11y/core/pack` (core 1.11 or later): registered in each
    * frame before the scan, and named in `engineOptions.packs`.
    */
-  withPacks(packs: object | object[]): this;
+  withPacks(packs: PackLike | PackLike[]): this;
   /** Post-filter checksResults down to only the given outcomes. */
   reportOnly(outcomes: Outcome | Outcome[]): this;
   /** Opt in to also scanning every sub-frame on the page (including cross-origin iframes). */
@@ -157,7 +168,7 @@ export class A11yCoreBuilder {
   /**
    * Runs the scan. Returns { topFrame, frames } instead of a single result
    * when .frames(true) was used. Rejects with an EngineError when the engine
-   * refuses the rule/tag lists or an include() selector.
+   * refuses its input (see EngineError).
    */
   analyze(): Promise<A11yCoreResult | A11yCoreMultiFrameResult>;
 }
@@ -183,8 +194,9 @@ export function formatFailures(
  * What a scan result says it left out, which its checksResults alone would
  * pass over as clean: an include() scope that matched no element
  * (`context-not-found`, nothing was scanned), some include() selectors that
- * matched nothing (`context-partly-not-found`), and each custom rule that
- * did not run (`custom-rule-skipped`). Each gap has a `message`. Throws a
+ * matched nothing (`context-partly-not-found`), each custom rule that did
+ * not run (`custom-rule-skipped`), and each pack that did not run
+ * (`pack-skipped`). Each gap has a `message`. Throws a
  * TypeError for a frames(true) result: call it on `topFrame` and on each
  * scanned frame.
  */

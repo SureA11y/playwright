@@ -4,7 +4,7 @@
  * Demonstrates the pattern that actually matters for E2E test suites: using
  * A11yCoreBuilder as an accessibility gate inside a real Playwright test
  * (@playwright/test), not just a standalone script -- see basic-scan.js for
- * that simpler case.
+ * that simpler case, and scan-with-pack.js for a scan against a pack.
  *
  * This project depends on the "playwright" package rather than
  * "@playwright/test" directly, so this imports the test runner via
@@ -51,5 +51,24 @@ test('a well-formed page has no accessibility violations', async ({ page }) => {
   expect(results.checksResults, formatFailures(results)).toEqual([]);
   // A scan that left something out (an include() that matched nothing, a
   // custom rule that didn't run) has no failures either; fail on it too.
+  expect(getScanGaps(results), formatFailures(results)).toEqual([]);
+});
+
+test("a page meets a pack's checklist (here, acme-policy-pack.js)", async ({ page }) => {
+  const acmePolicy = require('./acme-policy-pack.js');
+  await page.goto(
+    'data:text/html,<html lang="en"><head><title>Example</title></head>' +
+    '<body><main><h1>Hello</h1><img src="logo.png" alt="Acme"><video src="intro.mp4" autoplay muted></video></main></body></html>'
+  );
+
+  const results = await new A11yCoreBuilder({ page })
+    .withPacks(acmePolicy)
+    .options({ profile: 'acme-web-2026' })
+    .reportOnly(['fail'])
+    .analyze();
+
+  expect(results.checksResults, formatFailures(results)).toEqual([]);
+  // A pack that didn't run (its core range, or a page on another core)
+  // would otherwise pass here with nothing checked.
   expect(getScanGaps(results), formatFailures(results)).toEqual([]);
 });

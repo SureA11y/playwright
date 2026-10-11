@@ -2,6 +2,7 @@
 // package writes, against its types as published.
 import type { Page } from 'playwright';
 import type { ScanResult } from '@surea11y/core';
+import { definePack } from '@surea11y/core/pack';
 import {
   A11yCoreBuilder,
   EngineError,
@@ -22,8 +23,11 @@ async function main(): Promise<void> {
   const results = await new A11yCoreBuilder({ page })
     .include('main')
     .exclude('.cookie-banner', { rules: ['color-contrast-minimum'] })
-    .withTags(['wcag2a', 'wcag2aa'])
+    .withWcag('2.2', 'AA')
+    .withBestPractices()
+    .withTags('best-practice')
     .disableRules('meta-refresh-no-exceptions')
+    .withPacks(definePack({ name: '@acme/a11y-rules', version: '1.0.0', namespace: 'acme', core: '^1.11.1' }))
     .reportOnly(['fail', 'cantTell'])
     .elementRef(true)
     .analyze();
@@ -68,6 +72,8 @@ async function main(): Promise<void> {
   for (const gap of gaps) {
     if (gap.kind === 'custom-rule-skipped') {
       const id: string | null = gap.rule.id;
+    } else if (gap.kind === 'pack-skipped') {
+      const name: string | null = gap.pack.name;
     } else {
       const selectors: string[] = gap.selectors;
     }

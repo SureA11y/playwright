@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { chromium } = require('playwright');
-const { A11yCoreBuilder, EngineError } = require('../src/index.js');
+const { A11yCoreBuilder, EngineError, getScanGaps } = require('../src/index.js');
 
 // Shared across the customRules tests below -- reported outcome depends on
 // whether ctx.document has a .my-widget element. runInPage must be a
@@ -1130,6 +1130,90 @@ test('A11yCoreBuilder: withPacks() runs the pack in every frame when combined wi
       assert.deepStrictEqual(r.engine.packs, ['@acme/a11y-rules@1.0.0']);
       assert.strictEqual(r.checksResults.find((c) => c.ruleId === 'acme-no-widget').outcome, 'fail');
     }
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: withPacks() can scan the same page twice', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<html lang="en"><head><title>t</title></head><body><div class="my-widget">W</div></body></html>');
+    for (let i = 0; i < 2; i++) {
+      const result = await new A11yCoreBuilder({ page }).withPacks(ACME_PACK).withRules('acme-no-widget').analyze();
+      assert.deepStrictEqual(result.checksResults.map((r) => [r.ruleId, r.outcome]), [['acme-no-widget', 'fail']]);
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: a pack the page does not run is a pack-skipped gap, and analyze() warns about it', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<html lang="en"><head><title>t</title></head><body><img src="a.png"></body></html>');
+    let result;
+    const warnings = await captureWarnings(async () => {
+      result = await new A11yCoreBuilder({ page }).options({ packs: ['@acme/not-registered@1.0.0'] }).withRules('img-alt-present').analyze();
+    });
+    const gaps = getScanGaps(result);
+    assert.deepStrictEqual(gaps.map((g) => [g.kind, g.pack.name]), [['pack-skipped', '@acme/not-registered@1.0.0']]);
+    assert.ok(warnings.some((w) => w.includes('Pack "@acme/not-registered@1.0.0" did not run')), warnings.join('\n'));
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: withWcag() runs a WCAG target, and withBestPractices() adds the best practices', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<html lang="en"><head><title>t</title></head><body><img src="a.png"></body></html>');
+    const target = await new A11yCoreBuilder({ page }).withWcag('2.2', 'AA').analyze();
+    const ids = target.checksResults.map((r) => r.ruleId);
+    assert.strictEqual(target.engine.wcagVersion, '2.2');
+    assert.ok(ids.includes('img-alt-present'));
+    assert.ok(!ids.includes('duplicate-id'), '4.1.1 is no part of a WCAG 2.2 target');
+    assert.ok(!ids.includes('region'));
+    const withBest = await new A11yCoreBuilder({ page }).withWcag('2.2', 'AA').withBestPractices().analyze();
+    assert.ok(withBest.checksResults.some((r) => r.ruleId === 'region'));
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: strictOptions rejects a misspelt option with an EngineError carrying INVALID_ENGINE_OPTIONS', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<html lang="en"><head><title>t</title></head><body></body></html>');
+    await assert.rejects(
+      () => new A11yCoreBuilder({ page }).options({ strictOptions: true, lcoale: 'fr' }).analyze(),
+      (err) => err instanceof EngineError && err.code === 'INVALID_ENGINE_OPTIONS' && /lcoale/.test(err.message)
+    );
+  } finally {
+    await browser.close();
+  }
+});
+
+test("A11yCoreBuilder: a frames(true) result goes to @surea11y/core's SARIF report with every frame's findings", async () => {
+  const { renderSarifReport } = require('@surea11y/core/sarif');
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(
+      '<html lang="en"><head><title>t</title></head><body><img src="top.png">' +
+      '<iframe title="Ad" srcdoc="<html lang=en><head><title>f</title></head><body><img src=ad.png></body></html>"></iframe></body></html>'
+    );
+    await page.waitForLoadState('load');
+    const results = await new A11yCoreBuilder({ page }).frames(true).withRules('img-alt-present').analyze();
+    const run = JSON.parse(renderSarifReport(results)).runs[0];
+    const failures = run.results.filter((r) => r.ruleId === 'img-alt-present' && r.level === 'error');
+    assert.strictEqual(failures.length, 2, JSON.stringify(failures.map((r) => r.locations)));
+    const notices = (run.invocations || []).flatMap((i) => i.toolExecutionNotifications || []);
+    assert.deepStrictEqual(notices.map((n) => n.message.text), [], 'no frame reported as not scanned');
   } finally {
     await browser.close();
   }

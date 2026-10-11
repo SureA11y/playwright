@@ -1,0 +1,51 @@
+'use strict';
+
+/**
+ * A pack: an organisation's own accessibility policy, run by @surea11y/core
+ * as it runs its own rules and standards. A national standard such as RGAA
+ * ships the same way. Here it is a file of the example; a real pack is a
+ * package of its own, which `npx surea11y-pack new <folder>` (from
+ * @surea11y/core) writes with its tests, docs and lint.
+ *
+ * It brings one house rule, a checklist profile (WCAG 2.2 A and AA, region,
+ * and the house rule) and two checklist items, each reported as one result.
+ */
+
+const { definePack, wcagTags } = require('@surea11y/core/pack');
+
+module.exports = definePack({
+  name: '@acme/a11y-policy',
+  title: 'Acme web policy',
+  version: '1.0.0',
+  namespace: 'acme',
+  core: '^1.11.1',
+  rules: [
+    {
+      id: 'acme-no-autoplay',
+      meta: {
+        title: 'Videos do not play sound on their own',
+        description: 'A video that starts with sound talks over a screen reader.',
+        tags: ['acme'],
+        defaultSeverity: 'serious'
+      },
+      runInPage(ctx) {
+        const loud = [...ctx.document.querySelectorAll('video[autoplay]')].filter((v) => !v.muted);
+        return loud.length
+          ? {
+              outcome: 'fail',
+              occurrences: loud.map((v) =>
+                ctx.helpers.reportOccurrence(v, { summary: 'This video plays with sound as the page opens.', hint: 'Remove autoplay, or add muted.' })
+              )
+            }
+          : { outcome: 'pass', occurrences: [] };
+      }
+    }
+  ],
+  profiles: {
+    'acme-web-2026': { tags: wcagTags('2.2', ['A', 'AA']), rules: ['region', 'acme-no-autoplay'] }
+  },
+  rollups: [
+    { id: 'acme-images', title: 'Images have a text alternative', checksIds: ['img-alt-present'] },
+    { id: 'acme-media', title: 'Media stays quiet until asked', checksIds: ['acme-no-autoplay'] }
+  ]
+});
