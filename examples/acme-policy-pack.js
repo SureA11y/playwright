@@ -29,7 +29,8 @@ module.exports = definePack({
         defaultSeverity: 'serious'
       },
       runInPage(ctx) {
-        const loud = [...ctx.document.querySelectorAll('video[autoplay]')].filter((v) => !v.muted);
+        // defaultMuted reflects the muted attribute where muted isn't set from it yet (jsdom).
+        const loud = [...ctx.document.querySelectorAll('video[autoplay]')].filter((v) => !(v.muted || v.defaultMuted));
         return loud.length
           ? {
               outcome: 'fail',
