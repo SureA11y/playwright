@@ -1,15 +1,7 @@
 'use strict';
 
-/**
- * A pack: an organisation's own accessibility policy, run by @surea11y/core
- * as it runs its own rules and standards. A national standard such as RGAA
- * ships the same way. Here it is a file of the example; a real pack is a
- * package of its own, which `npx surea11y-pack new <folder>` (from
- * @surea11y/core) writes with its tests, docs and lint.
- *
- * It brings one house rule, a checklist profile (WCAG 2.2 A and AA, region,
- * and the house rule) and two checklist items, each reported as one result.
- */
+// A small pack: one house rule, a checklist profile and two checklist items.
+// A real pack is a package of its own; `npx surea11y-pack new <folder>` writes one.
 
 const { definePack, wcagTags } = require('@surea11y/core/pack');
 
