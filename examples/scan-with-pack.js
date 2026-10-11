@@ -1,12 +1,7 @@
 'use strict';
 
-/**
- * Scans a page against a pack's checklist (see acme-policy-pack.js) and
- * prints each checklist item's result, then any finding.
- *
- * Run: npm run example:pack -- https://example.com/
- *      (defaults to a small built-in page if no URL is given)
- */
+// Scans a page against acme-policy-pack.js's checklist and prints each item's result.
+// Run: npm run example:pack -- <url> (a small built-in page by default)
 
 const { chromium } = require('playwright');
 const { A11yCoreBuilder, formatFailures, getScanGaps } = require('../src/index.js');
