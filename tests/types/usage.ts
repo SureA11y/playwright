@@ -26,6 +26,7 @@ async function main(): Promise<void> {
     .withWcag('2.2', 'AA')
     .withBestPractices()
     .includeMode('or')
+    .logger((gap, frame) => { void `${frame.url}: ${gap.kind} ${gap.message}`; })
     .withTags('best-practice')
     .disableRules('meta-refresh-no-exceptions')
     .withPacks(definePack({ name: '@acme/a11y-rules', version: '1.0.0', namespace: 'acme', core: '^1.11.1' }))

@@ -5,8 +5,7 @@ const {
   A11yCoreBuilderBase,
   createInPageScan,
   rethrowEngineError,
-  queryOccurrenceElement,
-  getScanGaps
+  queryOccurrenceElement
 } = require('@surea11y/binding-base');
 
 // Playwright's page.evaluate(fn, arg) (and frame.evaluate(fn, arg), same
@@ -188,7 +187,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         engineOptions,
         runOnly
       }));
-      this._warnScanGaps(result);
+      this._warnScanGaps(result, '@surea11y/playwright');
       return this._elementRef ? this._attachElementRefs(frameOrPage, result) : result;
     };
 
@@ -248,27 +247,6 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
       }
     }
     return result;
-  }
-
-  /**
-   * Prints what the scan left out (getScanGaps(): an include() scope that
-   * matched nothing, a custom rule that did not run) with console.warn,
-   * once per scanned frame. @surea11y/core warns about these too, but in
-   * the page's console, which a Playwright run does not show; a result
-   * whose checksResults alone look clean would otherwise pass without a
-   * word.
-   */
-  _warnScanGaps(result) {
-    let gaps;
-    try {
-      gaps = getScanGaps(result);
-    } catch (e) {
-      return; // not a scan result; nothing to say about it here
-    }
-    const where = result.url ? ` (${result.url})` : '';
-    for (const gap of gaps) {
-      console.warn(`@surea11y/playwright${where}: ${gap.message}`);
-    }
   }
 
   async _findElement(frameOrPage, occurrence) {
