@@ -1049,6 +1049,34 @@ test('A11yCoreBuilder: analyze() warns once per scanned frame about a custom rul
   }
 });
 
+test('A11yCoreBuilder: logger() receives each scan gap with its frame\'s result, instead of console.warn', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(
+      'data:text/html,<html><body>' +
+      '<iframe srcdoc="%3Chtml%3E%3Cbody%3E%3Cp%3Einner%3C/p%3E%3C/body%3E%3C/html%3E"></iframe>' +
+      '</body></html>'
+    );
+    await page.waitForLoadState('networkidle').catch(() => {});
+
+    const seen = [];
+    const warnings = await captureWarnings(() => new A11yCoreBuilder({ page })
+      .include('#missing')
+      .options({ customRules: [{ id: 'never-runs', meta: { title: 'Never runs' }, runInPage: 'not a function' }] })
+      .frames(true)
+      .logger((gap, frame) => seen.push([gap.kind, frame.url]))
+      .analyze());
+    assert.deepStrictEqual(warnings, []);
+    // The scope matched nothing in the top frame; the custom rule was
+    // skipped there and in the sub-frame. Each gap comes with its frame.
+    assert.deepStrictEqual(seen.map(([kind]) => kind).sort(), ['context-not-found', 'custom-rule-skipped', 'custom-rule-skipped']);
+    assert.strictEqual(seen.filter(([, url]) => url === 'about:srcdoc').length, 1, JSON.stringify(seen));
+  } finally {
+    await browser.close();
+  }
+});
+
 // A pack (@surea11y/core/pack, plain object form): a rule, a 7:1 variant of
 // contrast-minimum, and a checklist profile with one item.
 const ACME_PACK = {

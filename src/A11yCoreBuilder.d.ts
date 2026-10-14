@@ -155,6 +155,12 @@ export class A11yCoreBuilder {
    * later call replaces the mode.
    */
   includeMode(mode: 'and' | 'or'): this;
+  /**
+   * Where analyze() sends each scan gap instead of console.warn: called once
+   * per gap, with the result of the frame it came from. `() => {}` silences
+   * them, `null` goes back to console.warn. A later call replaces it.
+   */
+  logger(fn: ((gap: import('@surea11y/binding-base').ScanGap, result: A11yCoreResult) => void) | null): this;
   /** Merge arbitrary engineOptions (locale, contrast.mode, policyContract, ...). */
   options(partialEngineOptions: Record<string, unknown>): this;
   /** Register one or more custom rules for just this scan. Call multiple times to accumulate. */
