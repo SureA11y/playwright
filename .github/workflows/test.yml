@@ -22,3 +22,26 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm test
+
+  # SureA11y's CONTRIBUTING.md asks for a DCO sign-off on every commit.
+  # Dependabot's pull requests are left out: a bot can't certify the DCO.
+  sign-off:
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Every commit is signed off
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          missing=0
+          for sha in $(git rev-list "$BASE_SHA..HEAD"); do
+            if [ -z "$(git show -s --format='%(trailers:key=Signed-off-by,valueonly)' "$sha")" ]; then
+              echo "::error::$(git show -s --format='%h %s' "$sha") has no Signed-off-by line (git commit -s)"
+              missing=1
+            fi
+          done
+          exit $missing
