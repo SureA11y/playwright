@@ -149,6 +149,12 @@ export class A11yCoreBuilder {
   withWcag(version: WcagVersion | 2.0 | 2.1 | 2.2, level?: WcagLevel): this;
   /** Also run the best-practice rules, those that name no WCAG criterion. */
   withBestPractices(enabled?: boolean): this;
+  /**
+   * How withRules() and withTags() combine when both are given: 'and' (the
+   * default) runs the rules matching both, 'or' those matching either. A
+   * later call replaces the mode.
+   */
+  includeMode(mode: 'and' | 'or'): this;
   /** Merge arbitrary engineOptions (locale, contrast.mode, policyContract, ...). */
   options(partialEngineOptions: Record<string, unknown>): this;
   /** Register one or more custom rules for just this scan. Call multiple times to accumulate. */
