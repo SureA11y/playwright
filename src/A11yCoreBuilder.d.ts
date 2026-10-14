@@ -156,6 +156,12 @@ export class A11yCoreBuilder {
    */
   includeMode(mode: 'and' | 'or'): this;
   /**
+   * The WCAG level of the criteria the scan reports, without changing which
+   * rules run: `.withRules('contrast-computable').wcagLevel('AA')` reports
+   * 1.4.3 and not 1.4.6. Any case; null clears it. A later call replaces it.
+   */
+  wcagLevel(level: WcagLevel | 'a' | 'aa' | 'aaa' | null): this;
+  /**
    * Where analyze() sends each scan gap instead of console.warn: called once
    * per gap, with the result of the frame it came from. `() => {}` silences
    * them, `null` goes back to console.warn. A later call replaces it.
