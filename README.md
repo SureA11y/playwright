@@ -9,6 +9,10 @@ npm install @surea11y/playwright playwright
 npx playwright install chromium   # every test launches a real browser -- npm install alone doesn't fetch it
 ```
 
+`@surea11y/core` 1.11.1 or later comes with it as a peer dependency, as Playwright does: npm 7 and later, and pnpm 8 and later, install it for you, so the line above is all you need. With Yarn 1 or npm 6, which don't install peers, add `@surea11y/core` to that line.
+
+Being a peer means your project and this binding share one copy of core. That matters as soon as your project uses core directly, to write a SARIF log or an HTML report (`@surea11y/core/sarif`, `/report`), read the rule catalogue, or keep a baseline: those read results with the same core that produced them, so a report never labels a finding with another release's rules. It holds when you bring your own core too: a linked checkout (`file:../core`), a monorepo, a fork, or a pinned release. Before 1.4.0, core was a regular dependency, and a project whose core differed from the binding's got a second copy without a word; such a project needed `"overrides": { "@surea11y/core": "$@surea11y/core" }` in its `package.json`, which it can now drop.
+
 `npm test` (in this repo) only needs Chromium. The cross-browser regression tests in `tests/cross-browser.test.js` (proving this works against Firefox/WebKit too, not just Chromium) additionally need `npx playwright install firefox webkit`. `npm test` also compiles `tests/types/usage.ts` with TypeScript against the shipped types (`typescript` is a dev dependency only).
 
 ## Usage
