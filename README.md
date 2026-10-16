@@ -84,7 +84,7 @@ The four take a string or an array of strings. `undefined` (a missing config val
 
 `.exclude(selector)` above excludes globally. Pass a second argument to scope it to specific rule IDs instead: `.exclude('.mat-select', { rules: ['aria-required-children'] })` skips `.mat-select` for that rule only — every other rule still sees it. Global and rule-scoped `.exclude()` calls compose freely.
 
-**Create one builder per scan.** `A11yCoreBuilder` is a mutable object with no reset between `.analyze()` calls — `include()`/`exclude()`/`withRules()`/`disableRules()`/`withTags()`/`disableTags()`/`options()`/`withCustomRules()`/`withPacks()` all push onto or merge into internal state that persists for the instance's lifetime. Calling one of them again before a second `.analyze()` call *accumulates* on top of the first scan's scope rather than replacing it (this is exactly what makes "call `.include()` several times for one scan," above, work — the same accumulation just also applies across separate scans if you reuse an instance). `.reportOnly()`/`.frames()`/`.elementRef()`/`.withWcag()`/`.withBestPractices()`/`.includeMode()`/`.wcagLevel()`/`.logger()` are the exception: each call replaces the previous value instead of merging with it.
+**Create one builder per scan.** `A11yCoreBuilder` is a mutable object with no reset between `.analyze()` calls — `include()`/`exclude()`/`withRules()`/`disableRules()`/`withTags()`/`disableTags()`/`options()`/`withCustomRules()`/`withPacks()` all push onto or merge into internal state that persists for the instance's lifetime. Calling one of them again before a second `.analyze()` call *accumulates* on top of the first scan's scope rather than replacing it (this is exactly what makes "call `.include()` several times for one scan," above, work — the same accumulation just also applies across separate scans if you reuse an instance). `.reportOnly()`/`.frames()`/`.elementRef()`/`.screenshots()`/`.withWcag()`/`.withBestPractices()`/`.includeMode()`/`.wcagLevel()`/`.logger()` are the exception: each call replaces the previous value instead of merging with it.
 
 ### When `.include()` matches nothing, or doesn't parse
 
@@ -243,6 +243,37 @@ This resolves each occurrence to an `ElementHandle` in its own frame instead of 
 
 Each `ElementHandle` holds a browser-side reference until garbage collected or explicitly disposed — for a scan with many violations that you're keeping around a while (rather than using immediately, as above), call `occurrence.elementHandle.dispose()` when you're done with it, per [Playwright's own `ElementHandle` guidance](https://playwright.dev/docs/api/class-elementhandle).
 
+### A picture of each failing element
+
+Opt in with `.screenshots()`, and each occurrence the scan flags gets a `screenshot` field: a picture of the element, with a box drawn around it, or the reason there is none.
+
+```js
+const results = await new A11yCoreBuilder({ page })
+  .screenshots({ dir: 'a11y-shots', padding: 16 })
+  .analyze();
+
+const [first] = results.checksResults.filter((r) => r.outcome === 'fail');
+first.occurrences[0].screenshot;
+// { path: 'a11y-shots/element-3f9a1c07.png', box: { x: 20, y: 20, width: 120, height: 40 } }
+```
+
+| Option | Default | |
+|---|---|---|
+| `dir` | none | Write each picture there. Without it, each comes back as `{ buffer, box }`, a PNG for you to store your own way. |
+| `outcomes` | `['fail']` | Which occurrences to picture. For contrast, `['fail', 'cantTell']` shows the background the engine couldn't judge. |
+| `padding` | `0` | CSS pixels of context around the element. |
+| `highlight` | `true` | Draw a box around the element, over the page; the element itself is never restyled. |
+| `max` | `50` | At most this many pictures per scan, frames included. |
+
+- **One picture per element.** Several rules can flag the same element; it's pictured once, and each of their occurrences carries the same `screenshot`. A file is named after where the element is, so it keeps its name from run to run, and `formatFailures()` names it under each finding (`   screenshot: a11y-shots/element-3f9a1c07.png`).
+- **`box`** is where the element shows in the picture, in CSS pixels; the PNG is larger by the device pixel ratio. `cropped: true` says only part of it shows, as for an element taller than the viewport, which is pictured from its top-left corner.
+- **No picture, and why**: `{ skipped }` with `'no-element'` (no selector, or nothing matches it any more), `'page-level'` (a finding about the whole page, on `<html>`, `<head>` or `<body>`), `'not-rendered'` (such as `display: none`), `'zero-size'`, `'off-screen'` (such as `left: -9999px`), `'max-reached'`, or `'capture-failed'` with the browser's `error`. A failed picture never fails the scan.
+- **The page is put back.** Each element is scrolled into view for its picture, and afterwards every scroll position is restored and the box removed, also when a picture fails. Something drawn over the element, such as a sticky header, shows as it does on screen.
+- **Frames.** With `.frames(true)`, an element in an `<iframe>`, cross-origin ones included, is pictured on the page as it shows there.
+- **Off by default.** Pictures of real pages can hold personal data, and they end up as CI artifacts.
+
+The pictures are taken right after each frame's scan, before `.reportOnly()` trims the result, and combine with `.elementRef(true)`. Focus, hover, animations or content that loads late can still differ from what the scan saw. An option it can't use throws a `TypeError` with `code: 'INVALID_ENGINE_OPTIONS'` at the call, and so does `.analyze()` with `options({ output: { includeSelector: false } })`, since each element is found by its selector. Works in Chromium, Firefox and WebKit.
+
 ### Web components: the internals hook
 
 Many web components keep their `ElementInternals` in a private field and name themselves, set their states or give themselves a role through it:
@@ -376,7 +407,7 @@ Every occurrence already carries `selector` and (with `.elementRef(true)`, above
 
 ## TypeScript
 
-`src/A11yCoreBuilder.d.ts` (re-exported from `src/index.d.ts`, wired up via `package.json`'s `types` field) ships types for the whole builder API and the result (`A11yCoreResult`, `CheckResult`, `Occurrence`, `CompositeResult`, etc.). The result types are built on the ones `@surea11y/core` ships, so they carry every field the engine returns (`engine.version`, `engine.environment`, `contextMatch`, `skippedCustomRules`, `shadowHostSelectors`, `margin`, ...); this package adds `elementHandle` and the `.frames(true)` shape. `EngineError`/`EngineErrorCode`, `getScanGaps()`/`ScanGap`, `getScanNotes()`/`ScanNote` and `formatOccurrenceLocation()` are typed too, and so are `withWcag()` and `wcagLevel()` (`WcagVersion`, `WcagLevelInput`), `plannedChecks()`/`plannedCriteria()` (`PlannedCheck`, `PlannedCriterion`), the static `installInternalsHook()`, and `withPacks()`, which takes a pack made with `definePack` (`PackLike`). Code that handles every `ScanGap` kind it knows and treats the rest in an `else` branch needs a branch for `'pack-skipped'`, which carries `pack` rather than `selectors`. `analyze()` is typed `Promise<A11yCoreResult | A11yCoreMultiFrameResult>` — narrow on `'topFrame' in results` (or cast, if you already know which mode you called) to get the specific shape back, since a fluent builder can't statically track that `.frames(true)` was called earlier in the chain. `playwright` is a `peerDependencies` entry (not just `devDependencies`) since the class's `page` argument and `Occurrence#elementHandle` both come from it — consumers need their own `playwright` install for the types to resolve, same as they already do to construct a `Page` in the first place.
+`src/A11yCoreBuilder.d.ts` (re-exported from `src/index.d.ts`, wired up via `package.json`'s `types` field) ships types for the whole builder API and the result (`A11yCoreResult`, `CheckResult`, `Occurrence`, `CompositeResult`, etc.). The result types are built on the ones `@surea11y/core` ships, so they carry every field the engine returns (`engine.version`, `engine.environment`, `contextMatch`, `skippedCustomRules`, `shadowHostSelectors`, `margin`, ...); this package adds `elementHandle`, `screenshot` (`OccurrenceScreenshot`) and the `.frames(true)` shape. `EngineError`/`EngineErrorCode`, `getScanGaps()`/`ScanGap`, `getScanNotes()`/`ScanNote` and `formatOccurrenceLocation()` are typed too, and so are `withWcag()` and `wcagLevel()` (`WcagVersion`, `WcagLevelInput`), `plannedChecks()`/`plannedCriteria()` (`PlannedCheck`, `PlannedCriterion`), the static `installInternalsHook()`, `withPacks()`, which takes a pack made with `definePack` (`PackLike`), and `.screenshots()` (`ScreenshotOptions`). Code that handles every `ScanGap` kind it knows and treats the rest in an `else` branch needs a branch for `'pack-skipped'`, which carries `pack` rather than `selectors`. `analyze()` is typed `Promise<A11yCoreResult | A11yCoreMultiFrameResult>` — narrow on `'topFrame' in results` (or cast, if you already know which mode you called) to get the specific shape back, since a fluent builder can't statically track that `.frames(true)` was called earlier in the chain. `playwright` is a `peerDependencies` entry (not just `devDependencies`) since the class's `page` argument and `Occurrence#elementHandle` both come from it — consumers need their own `playwright` install for the types to resolve, same as they already do to construct a `Page` in the first place.
 
 ## What changes with `@surea11y/core` 1.12
 

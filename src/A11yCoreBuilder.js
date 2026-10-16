@@ -114,6 +114,19 @@ const findOccurrenceElement = eval(`(args) => {
  * const [firstFail] = results.checksResults.filter(r => r.outcome === 'fail');
  * await firstFail.occurrences[0].elementHandle.screenshot({ path: 'flagged.png' });
  *
+ * Or let the scan take a picture of each element it flags, with
+ * `.screenshots()` (@surea11y/binding-base's, see its README): each
+ * occurrence gets a `screenshot` field, the picture (a Buffer, or a file in
+ * `dir`) or why there is none. The element is scrolled into view and marked
+ * with a box drawn over the page, and the page is put back afterwards; in
+ * every frame with `.frames(true)`, including cross-origin ones:
+ *
+ * const results = await new A11yCoreBuilder({ page })
+ *   .screenshots({ dir: 'a11y-shots', padding: 16 })
+ *   .analyze();
+ * // results.checksResults[i].occurrences[j].screenshot
+ * //   -> { path: 'a11y-shots/element-3f9a1c07.png', box: { x, y, width, height } }
+ *
  * Register your own rule(s) for just this scan with
  * `.withCustomRules([...])` (@surea11y/core's `engineOptions.customRules`
  * escape hatch -- see ../core/docs/ENGINE_OPTIONS.md). Pass a real,
@@ -142,8 +155,8 @@ const findOccurrenceElement = eval(`(args) => {
  * top of the first scan's scope rather than replacing it (intentional for
  * "call include() several times for one scan" -- see above -- but a footgun
  * if you hold one instance across multiple assertions).
- * reportOnly()/frames()/elementRef() are the exception: each call replaces
- * the previous value rather than merging with it.
+ * reportOnly()/frames()/elementRef()/screenshots() are the exception: each
+ * call replaces the previous value rather than merging with it.
  */
 class A11yCoreBuilder extends A11yCoreBuilderBase {
   /**
@@ -205,6 +218,9 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         runOnly
       }));
       this._warnScanGaps(result, '@surea11y/playwright');
+      // Right after the frame's scan, before reportOnly(): nothing unless
+      // .screenshots() was called.
+      if (this._screenshots) await this._screenshotFrame(frameOrPage, result);
       return this._elementRef ? this._attachElementRefs(frameOrPage, result) : result;
     };
 
@@ -264,6 +280,46 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
       }
     }
     return result;
+  }
+
+  /**
+   * binding-base's screenshots step for one scanned frame (or the page),
+   * with the <iframe>s leading to it: each frame's frameElement(), a handle
+   * in its parent, disposed afterwards.
+   */
+  async _screenshotFrame(frameOrPage, result) {
+    const framePath = [];
+    const parentOf = (f) => (typeof f.parentFrame === 'function' ? f.parentFrame() : null);
+    for (let f = frameOrPage; parentOf(f); f = parentOf(f)) {
+      // null when the frame detached after its scan: binding-base fails
+      // that frame's pictures.
+      const iframe = await f.frameElement().catch(() => null);
+      framePath.unshift({ frame: parentOf(f), iframe });
+    }
+    try {
+      await this._captureScreenshots(result, frameOrPage, framePath);
+    } finally {
+      await Promise.all(framePath.map((step) => (step.iframe ? step.iframe.dispose().catch(() => {}) : null)));
+    }
+  }
+
+  /**
+   * For binding-base's screenshots step: runs `fn(...args)` in the frame.
+   * Playwright's evaluate() takes one argument, so the arguments go as one
+   * array (an element handle inside it arrives as the element) and are
+   * spread in the page.
+   */
+  _evaluateInFrame(frameOrPage, fn, args) {
+    // eslint-disable-next-line no-new-func
+    return frameOrPage.evaluate(new Function('args', 'return (' + fn.toString() + ')(...args)'), args);
+  }
+
+  /**
+   * For binding-base's screenshots step: a PNG of `box`, CSS pixels in the
+   * viewport, which is what Playwright's clip is relative to.
+   */
+  _captureBox(box) {
+    return this._page.screenshot({ clip: { x: box.x, y: box.y, width: box.width, height: box.height } });
   }
 
   async _findElement(frameOrPage, occurrence) {

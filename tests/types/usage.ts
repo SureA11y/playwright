@@ -41,6 +41,7 @@ async function main(): Promise<void> {
     .withPacks(definePack({ name: '@acme/a11y-rules', version: '1.0.0', namespace: 'acme', core: '^1.11.1' }))
     .reportOnly(['fail', 'cantTell'])
     .elementRef(true)
+    .screenshots({ dir: 'a11y-shots', outcomes: ['fail', 'cantTell'], padding: 8, highlight: true, max: 20 })
     .analyze();
 
   if ('topFrame' in results) {
@@ -71,6 +72,10 @@ async function main(): Promise<void> {
       const path: number[] | null = o.structuralPath;
       const where: string = formatOccurrenceLocation(o);
       if (o.elementHandle) await o.elementHandle.screenshot();
+      const shot = o.screenshot;
+      if (shot && 'path' in shot) String(shot.path + shot.box.width);
+      else if (shot && 'buffer' in shot) shot.buffer.toString('base64');
+      else if (shot) String(shot.skipped + (shot.error ?? ''));
     }
   }
 
