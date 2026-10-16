@@ -1,6 +1,6 @@
 'use strict';
 
-const { runa11yCoreInPage } = require('@surea11y/core');
+const { runa11yCoreInPage, internalsHookScript } = require('@surea11y/core');
 const {
   A11yCoreBuilderBase,
   createInPageScan,
@@ -146,6 +146,23 @@ const findOccurrenceElement = eval(`(args) => {
  * the previous value rather than merging with it.
  */
 class A11yCoreBuilder extends A11yCoreBuilderBase {
+  /**
+   * Installs @surea11y/core's opt-in internals hook, so a scan can read the
+   * names, states and roles web components set through a private
+   * ElementInternals. Takes a Page, or a BrowserContext to cover every page
+   * it opens. Call it before page.goto(): Playwright runs init scripts
+   * before the page's own scripts in every frame, and again after each
+   * navigation (addInitScript()). The page already loaded when it is called
+   * doesn't get it until it navigates. Resolves when the script is added.
+   * @param {import('playwright').Page | import('playwright').BrowserContext} pageOrContext
+   */
+  static installInternalsHook(pageOrContext) {
+    if (!pageOrContext || typeof pageOrContext.addInitScript !== 'function') {
+      throw new TypeError('A11yCoreBuilder.installInternalsHook() requires a Playwright Page or BrowserContext (with an .addInitScript() method).');
+    }
+    return pageOrContext.addInitScript({ content: internalsHookScript() });
+  }
+
   /**
    * @param {{ page: import('playwright').Page, url?: string }} opts
    *   `page` must already be navigated to and settled at the URL to scan --

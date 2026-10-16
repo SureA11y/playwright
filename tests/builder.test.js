@@ -1246,3 +1246,201 @@ test("A11yCoreBuilder: a frames(true) result goes to @surea11y/core's SARIF repo
     await browser.close();
   }
 });
+
+// --- @surea11y/core 1.12 -------------------------------------------------------------
+
+// Web components that keep their ElementInternals in a private field, where
+// no script but the internals hook can read them: one names itself and sets
+// its state, one is a switch only through its internals, with no name, and
+// one is the same switch named through its internals.
+const COMPONENTS_SCRIPT = `<script>
+customElements.define('x-check', class extends HTMLElement {
+  #i; constructor() { super(); this.#i = this.attachInternals(); this.#i.ariaLabel = 'Subscribe'; this.#i.ariaChecked = 'false'; }
+});
+customElements.define('x-toggle', class extends HTMLElement {
+  #i; constructor() { super(); this.#i = this.attachInternals(); this.#i.role = 'switch'; }
+});
+customElements.define('x-named-toggle', class extends HTMLElement {
+  #i; constructor() { super(); this.#i = this.attachInternals(); this.#i.role = 'switch'; this.#i.ariaLabel = 'Dark mode'; }
+});
+</script>`;
+
+function componentPage(body) {
+  return 'data:text/html,' + encodeURIComponent(
+    `<!doctype html><html lang="en"><head><title>t</title>${COMPONENTS_SCRIPT}</head><body><main><h1>Hi</h1>${body}</main></body></html>`
+  );
+}
+
+function srcdoc(html) {
+  return html.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+function outcomeOf(result, ruleId) {
+  const check = result.checksResults.find((r) => r.ruleId === ruleId);
+  return check ? check.outcome : undefined;
+}
+
+test('A11yCoreBuilder: wcagLevel() reaches the engine: a contrast check at AA reports 1.4.3 and no 1.4.6', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html lang="en"><head><title>t</title></head><body><main><h1>Hi</h1><p>Text</p></main></body></html>');
+    const results = await new A11yCoreBuilder({ page }).withRules('contrast-computable').wcagLevel('aa').analyze();
+    assert.strictEqual(results.engine.wcagLevel, 'AA');
+    assert.deepStrictEqual(results.rulesResults.map((r) => r.ruleId), ['wcag-1.4.3-contrast-minimum']);
+    assert.deepStrictEqual(results.checksResults.map((r) => r.ruleId), ['contrast-computable']);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: a scan under emulated forced colors records engine.environment.forcedColors', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.emulateMedia({ forcedColors: 'active' });
+    await page.goto('data:text/html,<html lang="en"><head><title>t</title></head><body><main><h1>Hi</h1></main></body></html>');
+    const results = await new A11yCoreBuilder({ page }).withRules('contrast-minimum').analyze();
+    assert.strictEqual(results.engine.environment.forcedColors, 'active');
+
+    await page.emulateMedia({ forcedColors: 'none' });
+    const plain = await new A11yCoreBuilder({ page }).withRules('contrast-minimum').analyze();
+    assert.strictEqual(plain.engine.environment.forcedColors, 'none');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder.installInternalsHook(): a component named through private internals is a question without it, and passes with it', async () => {
+  const browser = await chromium.launch();
+  try {
+    const without = await browser.newPage();
+    await without.goto(componentPage('<x-check role="checkbox"></x-check>'));
+    const before = await new A11yCoreBuilder({ page: without }).logger(() => {}).analyze();
+    assert.strictEqual(outcomeOf(before, 'binary-control-name-present'), 'cantTell');
+    assert.strictEqual(before.engine.environment.internalsHook, undefined);
+
+    const page = await browser.newPage();
+    await A11yCoreBuilder.installInternalsHook(page);
+    await page.goto(componentPage('<x-check role="checkbox"></x-check>'));
+    const after = await new A11yCoreBuilder({ page }).analyze();
+    assert.strictEqual(after.engine.environment.internalsHook, 'early');
+    assert.strictEqual(outcomeOf(after, 'binary-control-name-present'), 'pass');
+    assert.strictEqual(outcomeOf(after, 'aria-required-attr'), 'pass');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder.installInternalsHook(): on a BrowserContext, every page it opens has the hook', async () => {
+  const browser = await chromium.launch();
+  try {
+    const context = await browser.newContext();
+    await A11yCoreBuilder.installInternalsHook(context);
+    for (const body of ['<x-check role="checkbox"></x-check>', '<x-named-toggle></x-named-toggle>']) {
+      const page = await context.newPage();
+      await page.goto(componentPage(body));
+      const results = await new A11yCoreBuilder({ page }).withRules('binary-control-name-present').analyze();
+      assert.strictEqual(results.engine.environment.internalsHook, 'early');
+      assert.strictEqual(outcomeOf(results, 'binary-control-name-present'), 'pass');
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder.installInternalsHook(): a component that is a switch only through its internals is checked as one', async () => {
+  const browser = await chromium.launch();
+  try {
+    const without = await browser.newPage();
+    await without.goto(componentPage('<x-toggle></x-toggle>'));
+    const before = await new A11yCoreBuilder({ page: without }).withRules('binary-control-name-present').analyze();
+    assert.strictEqual(outcomeOf(before, 'binary-control-name-present'), 'notApplicable', 'without the hook the role is not seen');
+
+    const page = await browser.newPage();
+    await A11yCoreBuilder.installInternalsHook(page);
+    await page.goto(componentPage('<x-toggle></x-toggle>'));
+    const unnamed = await new A11yCoreBuilder({ page }).withRules('binary-control-name-present').analyze();
+    assert.strictEqual(outcomeOf(unnamed, 'binary-control-name-present'), 'fail');
+
+    await page.goto(componentPage('<x-named-toggle></x-named-toggle>'));
+    const named = await new A11yCoreBuilder({ page }).withRules('binary-control-name-present').analyze();
+    assert.strictEqual(outcomeOf(named, 'binary-control-name-present'), 'pass');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder.installInternalsHook(): it reaches a same-origin frame', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await A11yCoreBuilder.installInternalsHook(page);
+    const inner = `<!doctype html><html lang="en"><head><title>f</title>${COMPONENTS_SCRIPT}</head><body><x-check role="checkbox"></x-check></body></html>`;
+    await page.goto(componentPage(`<iframe title="Form" srcdoc="${srcdoc(inner)}"></iframe>`));
+    await page.waitForLoadState('load');
+    const results = await new A11yCoreBuilder({ page }).frames(true).analyze();
+    assert.strictEqual(results.frames.length, 1);
+    const frame = results.frames[0];
+    assert.strictEqual(frame.engine.environment.internalsHook, 'early');
+    assert.strictEqual(outcomeOf(frame, 'binary-control-name-present'), 'pass');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder.installInternalsHook(): called after goto, the loaded page has no hook; the next navigation has it', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(componentPage('<x-check role="checkbox"></x-check>'));
+    await A11yCoreBuilder.installInternalsHook(page);
+    const loaded = await new A11yCoreBuilder({ page }).logger(() => {}).analyze();
+    assert.strictEqual(loaded.engine.environment.internalsHook, undefined);
+
+    await page.reload();
+    const reloaded = await new A11yCoreBuilder({ page }).analyze();
+    assert.strictEqual(reloaded.engine.environment.internalsHook, 'early');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder.installInternalsHook() throws a TypeError for anything but a Page or BrowserContext', () => {
+  for (const bad of [undefined, null, {}, { evaluate() {} }]) {
+    assert.throws(() => A11yCoreBuilder.installInternalsHook(bad), TypeError);
+  }
+});
+
+test('A11yCoreBuilder: without the hook, analyze() says once per scan that it would let the engine read those components', async (t) => {
+  const warnings = [];
+  t.mock.method(console, 'warn', (msg) => { warnings.push(String(msg)); });
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    const inner = `<!doctype html><html lang="en"><head><title>f</title>${COMPONENTS_SCRIPT}</head><body><x-check role="checkbox"></x-check></body></html>`;
+    await page.goto(componentPage(`<x-check role="checkbox"></x-check><iframe title="Form" srcdoc="${srcdoc(inner)}"></iframe>`));
+    await page.waitForLoadState('load');
+    await new A11yCoreBuilder({ page }).frames(true).analyze();
+    const notes = warnings.filter((w) => /custom element was asked about/.test(w));
+    assert.strictEqual(notes.length, 1, JSON.stringify(warnings));
+    assert.match(notes[0], /^@surea11y\/playwright \(data:text\/html,.*installInternalsHook\(\)/);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: plannedChecks() and plannedCriteria() list what analyze() then reports', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,<html lang="en"><head><title>t</title></head><body><main><h1>Hi</h1><img src="a.png"></main></body></html>');
+    const builder = new A11yCoreBuilder({ page }).withWcag('2.2', 'AA');
+    const results = await builder.analyze();
+    const ids = (list, key) => list.map((e) => e[key]).sort();
+    assert.deepStrictEqual(ids(builder.plannedChecks(), 'ruleId'), ids(results.checksResults, 'ruleId'));
+    assert.deepStrictEqual(ids(builder.plannedCriteria(), 'id'), ids(results.rulesResults, 'ruleId'));
+  } finally {
+    await browser.close();
+  }
+});
