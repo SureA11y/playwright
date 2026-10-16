@@ -1,6 +1,6 @@
 {
   "name": "@surea11y/playwright",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Accessibility (a11y, WCAG) checks for Playwright tests: scan the live page with new A11yCoreBuilder({ page }).analyze() and get only proven violations, with findings that need human review listed separately.",
   "keywords": [
     "accessibility",
