@@ -1,6 +1,6 @@
 // Compiled, not run, by tests/types.test.js: what a TypeScript user of this
 // package writes, against its types as published.
-import type { Page } from 'playwright';
+import type { BrowserContext, Page } from 'playwright';
 import type { ScanResult } from '@surea11y/core';
 import { definePack } from '@surea11y/core/pack';
 import {
@@ -9,6 +9,7 @@ import {
   formatFailures,
   formatOccurrenceLocation,
   getScanGaps,
+  getScanNotes,
   type A11yCoreResult,
   type A11yCoreMultiFrameResult,
   type CheckResult,
@@ -18,8 +19,15 @@ import {
 } from '../../src/index';
 
 declare const page: Page;
+declare const context: BrowserContext;
 
 async function main(): Promise<void> {
+  await A11yCoreBuilder.installInternalsHook(page);
+  await A11yCoreBuilder.installInternalsHook(context);
+  const planned = new A11yCoreBuilder({ page }).withWcag('2.2', 'aa').wcagLevel('aa');
+  const plannedIds: string[] = planned.plannedChecks().map((c) => c.ruleId).concat(planned.plannedCriteria().map((r) => r.id));
+  void plannedIds;
+
   const results = await new A11yCoreBuilder({ page })
     .include('main')
     .exclude('.cookie-banner', { rules: ['color-contrast-minimum'] })
@@ -27,7 +35,7 @@ async function main(): Promise<void> {
     .withBestPractices()
     .includeMode('or')
     .wcagLevel('AA')
-    .logger((gap, frame) => { void `${frame.url}: ${gap.kind} ${gap.message}`; })
+    .logger((entry, frame) => { void `${frame.url}: ${entry.kind} ${entry.message}`; })
     .withTags('best-practice')
     .disableRules('meta-refresh-no-exceptions')
     .withPacks(definePack({ name: '@acme/a11y-rules', version: '1.0.0', namespace: 'acme', core: '^1.11.1' }))
@@ -72,6 +80,10 @@ async function main(): Promise<void> {
   const message: string = formatFailures(result.checksResults, { outcomes: ['fail'] });
   const whole: string = formatFailures(result);
   const gaps: ScanGap[] = getScanGaps(result);
+  for (const note of getScanNotes(result)) {
+    if (note.kind === 'internals-hook') note.elementCount.toFixed();
+    else note.message.toUpperCase();
+  }
   for (const gap of gaps) {
     if (gap.kind === 'custom-rule-skipped') {
       const id: string | null = gap.rule.id;

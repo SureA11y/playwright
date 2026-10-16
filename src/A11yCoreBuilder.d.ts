@@ -1,4 +1,4 @@
-import type { Page, ElementHandle } from 'playwright';
+import type { Page, BrowserContext, ElementHandle } from 'playwright';
 import type * as Core from '@surea11y/core';
 
 // The result shapes are @surea11y/core's own types (shipped with it since
@@ -55,8 +55,8 @@ export type {
  * page's scripts broke a JavaScript built-in the engine relies on).
  */
 export { EngineError } from '@surea11y/binding-base';
-export type { EngineErrorCode, PackLike, WcagVersion, WcagLevel } from '@surea11y/binding-base';
-import type { PackLike, WcagVersion, WcagLevel } from '@surea11y/binding-base';
+export type { EngineErrorCode, PackLike, WcagVersion, WcagLevel, WcagLevelInput, PlannedCheck, PlannedCriterion } from '@surea11y/binding-base';
+import type { PackLike, WcagVersion, WcagLevelInput, ScanGap, ScanNote, PlannedCheck, PlannedCriterion } from '@surea11y/binding-base';
 
 export type Category = Core.RuleMeta['category'];
 export type LocaleResolutionReason = Core.LocaleResolution['reason'];
@@ -124,6 +124,15 @@ export class A11yCoreBuilder {
    */
   constructor(opts: { page: Page; url?: string });
 
+  /**
+   * Installs @surea11y/core's opt-in internals hook on a Page, or on a
+   * BrowserContext for every page it opens, so a scan can read names,
+   * states and roles web components set through a private ElementInternals.
+   * Call it before page.goto(): it runs before the page's scripts in every
+   * frame and after each navigation.
+   */
+  static installInternalsHook(pageOrContext: Page | BrowserContext): Promise<void>;
+
   /** Scope the scan to one region. Call multiple times for a multi-region union. */
   include(selector: string): this;
   /**
@@ -146,7 +155,7 @@ export class A11yCoreBuilder {
    * runs those of WCAG 2.2's A and AA criteria. withTags()/withRules() add
    * to them. A later call replaces the target.
    */
-  withWcag(version: WcagVersion | 2.0 | 2.1 | 2.2, level?: WcagLevel): this;
+  withWcag(version: WcagVersion | 2.0 | 2.1 | 2.2, level?: WcagLevelInput): this;
   /** Also run the best-practice rules, those that name no WCAG criterion. */
   withBestPractices(enabled?: boolean): this;
   /**
@@ -160,13 +169,14 @@ export class A11yCoreBuilder {
    * rules run: `.withRules('contrast-computable').wcagLevel('AA')` reports
    * 1.4.3 and not 1.4.6. Any case; null clears it. A later call replaces it.
    */
-  wcagLevel(level: WcagLevel | 'a' | 'aa' | 'aaa' | null): this;
+  wcagLevel(level: WcagLevelInput | null): this;
   /**
    * Where analyze() sends each scan gap instead of console.warn: called once
-   * per gap, with the result of the frame it came from. `() => {}` silences
-   * them, `null` goes back to console.warn. A later call replaces it.
+   * per gap, with the result of the frame it came from, and once per scan
+   * for the internals-hook note (tell them apart by `kind`). `() => {}`
+   * silences them, `null` goes back to console.warn. A later call replaces it.
    */
-  logger(fn: ((gap: import('@surea11y/binding-base').ScanGap, result: A11yCoreResult) => void) | null): this;
+  logger(fn: ((entry: ScanGap | ScanNote, result: A11yCoreResult) => void) | null): this;
   /** Merge arbitrary engineOptions (locale, contrast.mode, policyContract, ...). */
   options(partialEngineOptions: Record<string, unknown>): this;
   /** Register one or more custom rules for just this scan. Call multiple times to accumulate. */
@@ -182,6 +192,10 @@ export class A11yCoreBuilder {
   frames(enabled?: boolean): this;
   /** Opt in to resolving each fail/cantTell occurrence's selector to a live ElementHandle. */
   elementRef(enabled?: boolean): this;
+  /** The rules this scan will run, worked out in Node with no page (@surea11y/core 1.12.0 and later). */
+  plannedChecks(): PlannedCheck[];
+  /** The criteria this scan will report in rulesResults, worked out in Node with no page. */
+  plannedCriteria(): PlannedCriterion[];
 
   /**
    * Runs the scan. Returns { topFrame, frames } instead of a single result
@@ -220,3 +234,11 @@ export function formatFailures(
  */
 export { getScanGaps, formatOccurrenceLocation } from '@surea11y/binding-base';
 export type { ScanGap, OccurrenceLocation } from '@surea11y/binding-base';
+
+/**
+ * How the page was scanned, which a gap doesn't cover: `forced-colors` when
+ * the page was shown in forced colors, and `internals-hook` when the scan
+ * asked about web components it could have read with the internals hook.
+ */
+export { getScanNotes } from '@surea11y/binding-base';
+export type { ScanNote } from '@surea11y/binding-base';
