@@ -5,13 +5,13 @@ A Playwright binding for [`@surea11y/core`](https://github.com/SureA11y/core) â€
 ## Install
 
 ```bash
-npm install @surea11y/playwright playwright
+npm install @surea11y/core @surea11y/playwright playwright
 npx playwright install chromium   # every test launches a real browser -- npm install alone doesn't fetch it
 ```
 
-`@surea11y/core` 1.12.0 or later, the engine, comes with it as a regular dependency, so the line above is all you need, whatever your package manager.
+`@surea11y/core` is the engine, and a peer dependency of this binding, as Playwright is: install it yourself, 1.12.0 or later, as the line above does. Yarn, npm 6 and npm with `legacy-peer-deps` don't install peers for you, and npm 7 and later refuse the install when your project pins a core older than 1.12.0.
 
-If your project uses core directly too, to write a SARIF log or an HTML report (`@surea11y/core/sarif`, `/report`), read the rule catalogue, or keep a baseline, keep one copy of it, so those read results with the same core that produced them. A compatible range in your own `package.json` (`"@surea11y/core": "^1.12.0"`) is enough: npm installs core once. When yours can't match the binding's range, as with a linked checkout (`file:../core`) or a fork, add `"overrides": { "@surea11y/core": "$@surea11y/core" }` beside it, and the binding uses your copy, which needs to be 1.12.0 or later. 1.4.0 made core a peer dependency instead; 1.4.1 undoes that, because Yarn, npm 6 and npm with `legacy-peer-deps` don't install peers, and a project with an older core pinned couldn't install the binding at all.
+Being a peer means your project and the binding share one copy of core, the one in your own `package.json`. So whatever you do with core directly, writing a SARIF log or an HTML report (`@surea11y/core/sarif`, `/report`), reading the rule catalogue or keeping a baseline, reads results with the same core that produced them, a linked checkout (`file:../core`) or a fork included. Up to 1.4.1 core came with the binding as a regular dependency (except in 1.4.0): if your `package.json` names only the binding, add `@surea11y/core` when you upgrade, and drop any `overrides` entry for it.
 
 `npm test` (in this repo) only needs Chromium. The cross-browser regression tests in `tests/cross-browser.test.js` (proving this works against Firefox/WebKit too, not just Chromium) additionally need `npx playwright install firefox webkit`. `npm test` also compiles `tests/types/usage.ts` with TypeScript against the shipped types (`typescript` is a dev dependency only).
 

@@ -36,7 +36,7 @@ jobs:
       # The engine ships from a different repo, so a binding tag can front-run it.
       - name: Verify the declared @surea11y/core range resolves on the registry
         run: |
-          # A dependency, except in 1.4.0, where core was a peer.
+          # A peer; read from dependencies for a package.json from before the move.
           RANGE="$(node -p "const p = require('./package.json'); (p.peerDependencies || {})['@surea11y/core'] || (p.dependencies || {})['@surea11y/core']")"
           if ! npm view "@surea11y/core@$RANGE" version >/dev/null 2>&1; then
             echo "::error::@surea11y/core@$RANGE does not resolve on npm — publish the engine first"
@@ -57,7 +57,8 @@ jobs:
           WORKDIR="$(mktemp -d)"
           cd "$WORKDIR"
           npm init -y >/dev/null
-          npm install "$RUNNER_TEMP/$TARBALL" >/dev/null
+          # Core is a peer: install it beside the tarball, as the README says to.
+          npm install @surea11y/core "$RUNNER_TEMP/$TARBALL" >/dev/null
           node -e "const m = require('@surea11y/playwright'); for (const k of ['A11yCoreBuilder', 'EngineError', 'formatFailures', 'formatOccurrenceLocation', 'getScanGaps', 'getScanNotes']) if (typeof m[k] === 'undefined') throw new Error('missing export: ' + k)"
 
       - name: Publish to npm with provenance
