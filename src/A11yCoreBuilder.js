@@ -1,6 +1,6 @@
 'use strict';
 
-const { runa11yCoreInPage, internalsHookScript, getChecksForRunOnly, getRulesForRunOnly } = require('@surea11y/core');
+const { runa11yCoreInPage, internalsHookScript } = require('@surea11y/core');
 const {
   A11yCoreBuilderBase,
   createInPageScan,
@@ -187,34 +187,6 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
       throw new Error('A11yCoreBuilder requires { page } (a Playwright Page, with an .evaluate() method).');
     }
     this._page = page;
-  }
-
-  /**
-   * The script that registers withPacks()'s packs, built with the
-   * packScript() of the @surea11y/core this file loads: the one whose scan
-   * analyze() injects. binding-base doesn't depend on core, so the core it
-   * would find is wherever its own folder leads (with pnpm, or a copy nested
-   * under another package, a different release), and a page whose core
-   * isn't the one that built the script skips the packs.
-   */
-  _packScript() {
-    if (!this._packs.length) return null;
-    if (this._packScriptSource === null) {
-      this._packScriptSource = require('@surea11y/core/pack').packScript(this._packs);
-    }
-    return this._packScriptSource;
-  }
-
-  /** plannedChecks() from the same core, as for _packScript(). */
-  plannedChecks() {
-    const { runOnly, engineOptions } = this._plannedArgs();
-    return getChecksForRunOnly(runOnly, engineOptions);
-  }
-
-  /** plannedCriteria() from the same core, as for _packScript(). */
-  plannedCriteria() {
-    const { runOnly, engineOptions } = this._plannedArgs();
-    return getRulesForRunOnly(runOnly, engineOptions);
   }
 
   /**
