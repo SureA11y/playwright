@@ -36,7 +36,7 @@ jobs:
       # The engine ships from a different repo, so a binding tag can front-run it.
       - name: Verify the declared @surea11y/core range resolves on the registry
         run: |
-          # A peer; read from dependencies for a package.json from before the move.
+          # A dependency through 1.x and a peer from 2.0; this reads either.
           RANGE="$(node -p "const p = require('./package.json'); (p.peerDependencies || {})['@surea11y/core'] || (p.dependencies || {})['@surea11y/core']")"
           if ! npm view "@surea11y/core@$RANGE" version >/dev/null 2>&1; then
             echo "::error::@surea11y/core@$RANGE does not resolve on npm — publish the engine first"
