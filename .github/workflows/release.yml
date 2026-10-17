@@ -54,12 +54,14 @@ jobs:
         run: |
           set -euo pipefail
           TARBALL="$(npm pack --pack-destination "$RUNNER_TEMP" | tail -1)"
-          WORKDIR="$(mktemp -d)"
-          cd "$WORKDIR"
-          npm init -y >/dev/null
-          # Core is a peer: install it beside the tarball, as the README says to.
-          npm install @surea11y/core "$RUNNER_TEMP/$TARBALL" >/dev/null
-          node -e "const m = require('@surea11y/playwright'); for (const k of ['A11yCoreBuilder', 'EngineError', 'formatFailures', 'formatOccurrenceLocation', 'getScanGaps', 'getScanNotes']) if (typeof m[k] === 'undefined') throw new Error('missing export: ' + k)"
+          # Install it as the README says to, core beside the tarball, and alone,
+          # which still works while core is a regular dependency.
+          for CORE in @surea11y/core ""; do
+            cd "$(mktemp -d)"
+            npm init -y >/dev/null
+            npm install $CORE "$RUNNER_TEMP/$TARBALL" >/dev/null
+            node -e "const m = require('@surea11y/playwright'); for (const k of ['A11yCoreBuilder', 'EngineError', 'formatFailures', 'formatOccurrenceLocation', 'getScanGaps', 'getScanNotes']) if (typeof m[k] === 'undefined') throw new Error('missing export: ' + k)"
+          done
 
       - name: Publish to npm with provenance
         if: startsWith(github.ref, 'refs/tags/')
