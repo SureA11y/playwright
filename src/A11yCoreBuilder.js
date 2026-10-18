@@ -211,10 +211,16 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
     const runInFrame = async (frameOrPage, frameContextSelector) => {
       const frameUrl = this._url || (typeof frameOrPage.url === 'function' ? frameOrPage.url() : null);
       if (packScript) await frameOrPage.evaluate(packScript);
+      // The text of the style sheets the frame can't read, fetched from Node
+      // (binding-base 1.6.0 and core 1.14.0; nothing with older ones).
+      const frameEngineOptions =
+        typeof this._styleSheetEngineOptions === 'function'
+          ? await this._styleSheetEngineOptions(frameOrPage, engineOptions)
+          : engineOptions;
       const result = rethrowEngineError(await frameOrPage.evaluate(scanInPage, {
         url: frameUrl,
         contextSelector: frameContextSelector,
-        engineOptions,
+        engineOptions: frameEngineOptions,
         runOnly
       }));
       this._warnScanGaps(result, '@surea11y/playwright');
@@ -309,6 +315,19 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * array (an element handle inside it arrives as the element) and are
    * spread in the page.
    */
+  /**
+   * For binding-base's style sheet step: fetch with the page's own request
+   * API, which carries its cookies, in the shape of fetch().
+   */
+  get _styleSheetFetch() {
+    const request = this._page && typeof this._page.request === 'object' ? this._page.request : null;
+    if (!request || typeof request.get !== 'function') return null;
+    return async (url) => {
+      const res = await request.get(url, { timeout: 5000 });
+      return { ok: res.ok(), text: () => res.text() };
+    };
+  }
+
   _evaluateInFrame(frameOrPage, fn, args) {
     // eslint-disable-next-line no-new-func
     return frameOrPage.evaluate(new Function('args', 'return (' + fn.toString() + ')(...args)'), args);

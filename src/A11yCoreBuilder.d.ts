@@ -228,6 +228,12 @@ export class A11yCoreBuilder {
    * it can't use.
    */
   screenshots(options?: ScreenshotOptions | boolean): this;
+  /**
+   * Fetch, from Node, the style sheets the page can't read (another origin's)
+   * and give core their text, so checks that read the CSS can check them. On
+   * by default; needs @surea11y/core 1.14.0 or later.
+   */
+  fetchStyleSheets(enabled?: boolean): this;
   /** The rules this scan will run, worked out in Node with no page (@surea11y/core 1.12.0 and later). */
   plannedChecks(): PlannedCheck[];
   /** The criteria this scan will report in rulesResults, worked out in Node with no page. */
