@@ -1447,6 +1447,15 @@ test('A11yCoreBuilder: plannedChecks() and plannedCriteria() list what analyze()
 
 // --- @surea11y/core 1.14 -------------------------------------------------------------
 
+// The listener hook needs @surea11y/core 1.14.0, and its note
+// @surea11y/binding-base 1.6.0; these tests are skipped with older ones.
+const HAS_LISTENER_HOOK = typeof require('@surea11y/core').listenerHookScript === 'function';
+const HAS_LISTENER_NOTE = require('@surea11y/binding-base').getScanNotes({
+  checksResults: [{ outcome: 'cantTell', occurrences: [{ selector: 'div', data: { details: { reasonCode: 'CLICK_HANDLER_NO_KEY_HANDLER' } } }] }]
+}).some((n) => n.kind === 'listener-hook');
+const NEEDS_HOOK = !HAS_LISTENER_HOOK && 'needs @surea11y/core 1.14.0';
+const NEEDS_NOTE = !(HAS_LISTENER_HOOK && HAS_LISTENER_NOTE) && 'needs @surea11y/core 1.14.0 and @surea11y/binding-base 1.6.0';
+
 // A custom button given its click listener from script, with no key listener
 // anywhere: Enter and Space do nothing. Without the listener hook the scan
 // can't see the listener; with it, the button fails.
@@ -1457,7 +1466,7 @@ const SCRIPTED_BUTTON = 'data:text/html,' + encodeURIComponent(
   '</main></body></html>'
 );
 
-test('A11yCoreBuilder.installListenerHook(): a button given its click listener from script is unseen without it, and fails with it', async () => {
+test('A11yCoreBuilder.installListenerHook(): a button given its click listener from script is unseen without it, and fails with it', { skip: NEEDS_HOOK }, async () => {
   const browser = await chromium.launch();
   try {
     const without = await browser.newPage();
@@ -1479,7 +1488,7 @@ test('A11yCoreBuilder.installListenerHook(): a button given its click listener f
   }
 });
 
-test('A11yCoreBuilder.installListenerHook(): on a BrowserContext, every page it opens has the hook, beside the internals hook', async () => {
+test('A11yCoreBuilder.installListenerHook(): on a BrowserContext, every page it opens has the hook, beside the internals hook', { skip: NEEDS_HOOK }, async () => {
   const browser = await chromium.launch();
   try {
     const context = await browser.newContext();
@@ -1503,7 +1512,7 @@ test('A11yCoreBuilder.installListenerHook() throws a TypeError for anything but 
   }
 });
 
-test('A11yCoreBuilder: without the listener hook, analyze() says once per scan that it would let the engine judge those handlers', async (t) => {
+test('A11yCoreBuilder: without the listener hook, analyze() says once per scan that it would let the engine judge those handlers', { skip: NEEDS_NOTE }, async (t) => {
   const warnings = [];
   t.mock.method(console, 'warn', (msg) => { warnings.push(String(msg)); });
   const browser = await chromium.launch();

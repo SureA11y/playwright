@@ -64,7 +64,7 @@ for (const browserType of ['firefox', 'webkit']) {
     }
   });
 
-  test(`A11yCoreBuilder.installListenerHook() works in ${browserType}`, async () => {
+  test(`A11yCoreBuilder.installListenerHook() works in ${browserType}`, { skip: typeof require('@surea11y/core').listenerHookScript !== 'function' && 'needs @surea11y/core 1.14.0' }, async () => {
     const browser = await playwright[browserType].launch();
     try {
       const page = await browser.newPage();
