@@ -163,6 +163,20 @@ To also fail when the scan left something out (an `.include()` that matched noth
 
 See `examples/playwright-test-example.spec.js` for a fuller, runnable version (`npm run example:e2e`) — one test proving real violations get caught (unlabeled button, missing `alt`), one proving a well-formed page passes cleanly.
 
+### Failing only on serious problems
+
+Every rule result has a severity: `critical`, `serious`, `moderate` or `minor` (a profile can set its own). To start by blocking on serious problems while the rest are still reported, gate on `getGatingFailures(results, { failOnSeverity })` (`@surea11y/binding-base` 1.6.0 and later): the failing rules at that level or above, the same ones `surea11y scan --fail-on-severity` counts for the page. `formatFailures()` takes the same option and still lists the failures below the level, marked as ones that don't fail the test.
+
+```js
+const { A11yCoreBuilder, formatFailures, getGatingFailures } = require('@surea11y/playwright');
+
+const results = await new A11yCoreBuilder({ page }).analyze();
+const gate = { failOnSeverity: 'serious' };
+expect(getGatingFailures(results, gate), formatFailures(results, gate)).toEqual([]);
+```
+
+`fail` keeps its meaning, a definite violation; the level only picks which failures stop the test, and every failure stays in `results`. A level that isn't one of the four throws a `TypeError`. `SEVERITIES` lists them, least to most severe.
+
 ### Readable console/CI output on failure
 
 `expect(x).toEqual([])` alone gets you a *working* gate, but the failure message is a raw, deeply-nested object diff — hundreds of lines for a handful of violations. `formatFailures(results)` turns that into a short, scannable block (one entry per occurrence, numbered, with rule ID/severity/selector/hint) that you hand to your assertion library's own failure-message parameter, as above. A real failure then prints:
