@@ -15,7 +15,9 @@ import {
   type CheckResult,
   type EngineErrorCode,
   type Occurrence,
-  type ScanGap
+  type ScanGap,
+  getGatingFailures,
+  SEVERITIES
 } from '../../src/index';
 
 declare const page: Page;
@@ -115,3 +117,6 @@ async function main(): Promise<void> {
 }
 
 main();
+
+declare const gateResult: Parameters<typeof getGatingFailures>[0];
+const gatingIds: string[] = getGatingFailures(gateResult, { failOnSeverity: SEVERITIES[2] }).map((c) => c.ruleId);
