@@ -162,6 +162,14 @@ export class A11yCoreBuilder {
    */
   static installInternalsHook(pageOrContext: Page | BrowserContext): Promise<void>;
 
+  /**
+   * Installs @surea11y/core's opt-in listener hook (core 1.14.0 and later) on
+   * a Page, or on a BrowserContext for every page it opens, so the keyboard
+   * rules see the listeners a page adds from script. Call it before
+   * page.goto(), as installInternalsHook().
+   */
+  static installListenerHook(pageOrContext: Page | BrowserContext): Promise<void>;
+
   /** Scope the scan to one region. Call multiple times for a multi-region union. */
   include(selector: string): this;
   /**
@@ -202,7 +210,8 @@ export class A11yCoreBuilder {
   /**
    * Where analyze() sends each scan gap instead of console.warn: called once
    * per gap, with the result of the frame it came from, and once per scan
-   * for the internals-hook note (tell them apart by `kind`). `() => {}`
+   * for each of the internals-hook and listener-hook notes (tell them apart
+   * by `kind`). `() => {}`
    * silences them, `null` goes back to console.warn. A later call replaces it.
    */
   logger(fn: ((entry: ScanGap | ScanNote, result: A11yCoreResult) => void) | null): this;
@@ -279,8 +288,10 @@ export type { ScanGap, OccurrenceLocation } from '@surea11y/binding-base';
 
 /**
  * How the page was scanned, which a gap doesn't cover: `forced-colors` when
- * the page was shown in forced colors, and `internals-hook` when the scan
- * asked about web components it could have read with the internals hook.
+ * the page was shown in forced colors, `internals-hook` when the scan
+ * asked about web components it could have read with the internals hook,
+ * and `listener-hook` when it asked about click or pointer handlers whose
+ * keyboard equivalent the listener hook would have let it see.
  */
 export { getScanNotes } from '@surea11y/binding-base';
 export type { ScanNote } from '@surea11y/binding-base';

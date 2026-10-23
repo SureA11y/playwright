@@ -1444,3 +1444,80 @@ test('A11yCoreBuilder: plannedChecks() and plannedCriteria() list what analyze()
     await browser.close();
   }
 });
+
+// --- @surea11y/core 1.14 -------------------------------------------------------------
+
+// A custom button given its click listener from script, with no key listener
+// anywhere: Enter and Space do nothing. Without the listener hook the scan
+// can't see the listener; with it, the button fails.
+const SCRIPTED_BUTTON = 'data:text/html,' + encodeURIComponent(
+  '<!doctype html><html lang="en"><head><title>t</title></head><body><main><h1>Hi</h1>' +
+  '<div id="save" role="button" tabindex="0">Save</div>' +
+  "<script>document.getElementById('save').addEventListener('click', () => {});</script>" +
+  '</main></body></html>'
+);
+
+test('A11yCoreBuilder.installListenerHook(): a button given its click listener from script is unseen without it, and fails with it', async () => {
+  const browser = await chromium.launch();
+  try {
+    const without = await browser.newPage();
+    await without.goto(SCRIPTED_BUTTON);
+    const before = await new A11yCoreBuilder({ page: without }).withRules('click-handler-keyboard-operable').analyze();
+    assert.strictEqual(outcomeOf(before, 'click-handler-keyboard-operable'), 'notApplicable');
+    assert.strictEqual(before.engine.environment.listenerHook, undefined);
+
+    const page = await browser.newPage();
+    await A11yCoreBuilder.installListenerHook(page);
+    await page.goto(SCRIPTED_BUTTON);
+    const after = await new A11yCoreBuilder({ page }).withRules('click-handler-keyboard-operable').analyze();
+    assert.strictEqual(after.engine.environment.listenerHook, 'early');
+    const check = after.checksResults.find((r) => r.ruleId === 'click-handler-keyboard-operable');
+    assert.strictEqual(check.outcome, 'fail');
+    assert.strictEqual(check.occurrences[0].data.details.reasonCode, 'CLICK_HANDLER_NO_KEY_LISTENER');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder.installListenerHook(): on a BrowserContext, every page it opens has the hook, beside the internals hook', async () => {
+  const browser = await chromium.launch();
+  try {
+    const context = await browser.newContext();
+    await A11yCoreBuilder.installListenerHook(context);
+    await A11yCoreBuilder.installInternalsHook(context);
+    for (let i = 0; i < 2; i++) {
+      const page = await context.newPage();
+      await page.goto(SCRIPTED_BUTTON);
+      const results = await new A11yCoreBuilder({ page }).withRules('click-handler-keyboard-operable').analyze();
+      assert.strictEqual(results.engine.environment.listenerHook, 'early');
+      assert.strictEqual(results.engine.environment.internalsHook, 'early');
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder.installListenerHook() throws a TypeError for anything but a Page or BrowserContext', () => {
+  for (const bad of [undefined, null, {}, { evaluate() {} }]) {
+    assert.throws(() => A11yCoreBuilder.installListenerHook(bad), TypeError);
+  }
+});
+
+test('A11yCoreBuilder: without the listener hook, analyze() says once per scan that it would let the engine judge those handlers', async (t) => {
+  const warnings = [];
+  t.mock.method(console, 'warn', (msg) => { warnings.push(String(msg)); });
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('data:text/html,' + encodeURIComponent(
+      '<!doctype html><html lang="en"><head><title>t</title></head><body><main><h1>Hi</h1>' +
+      '<div role="button" tabindex="0" onclick="void save()">Save</div></main></body></html>'
+    ));
+    await new A11yCoreBuilder({ page }).withRules('click-handler-keyboard-operable').analyze();
+    const notes = warnings.filter((w) => /element was asked about because the scan could not see/.test(w));
+    assert.strictEqual(notes.length, 1, JSON.stringify(warnings));
+    assert.match(notes[0], /installListenerHook\(\)/);
+  } finally {
+    await browser.close();
+  }
+});
