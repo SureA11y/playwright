@@ -1561,6 +1561,66 @@ test('A11yCoreBuilder.installLiveRegionHook() and getAnnouncements() throw a Typ
   }
 });
 
+const HAS_CONDITIONS = typeof require('@surea11y/binding-base').mergeConditionResults === 'function';
+const NEEDS_CONDITIONS = !HAS_CONDITIONS && 'needs @surea11y/binding-base 1.6.0';
+// Reads well in the light scheme; in the dark one its text is #444 on #222.
+const DARK_CONTRAST = 'data:text/html,' + encodeURIComponent(
+  '<!doctype html><html lang="en"><head><title>t</title><style>' +
+  'body { color: #111; background: #fff } ' +
+  '@media (prefers-color-scheme: dark) { body { color: #444; background: #222 } }' +
+  '</style></head><body><main><h1>Hi</h1><p id="note">Read me</p></main></body></html>'
+);
+
+test('A11yCoreBuilder.conditions(): a failure only in dark mode fails the merged result, labelled, and the page is put back', { skip: NEEDS_CONDITIONS }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 1024, height: 700 } });
+    await page.goto(DARK_CONTRAST);
+    const results = await new A11yCoreBuilder({ page })
+      .withRules('contrast-minimum')
+      .conditions([{ colorScheme: 'dark' }, { width: 320 }])
+      .analyze();
+    const check = results.checksResults.find((r) => r.ruleId === 'contrast-minimum');
+    assert.strictEqual(check.outcome, 'fail');
+    assert.ok(check.occurrences.length > 0);
+    for (const o of check.occurrences) assert.deepStrictEqual(o.conditions, ['dark']);
+    assert.deepStrictEqual(
+      results.conditionRuns.map((r) => [r.condition, r.environment.viewport.width, r.environment.colorScheme]),
+      [['default', 1024, 'light'], ['dark', 1024, 'dark'], ['width 320', 320, 'light']]
+    );
+    assert.deepStrictEqual(page.viewportSize(), { width: 1024, height: 700 });
+    assert.strictEqual(await page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches), false);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder.conditions(): a dark scheme the caller emulated stays dark, and a width-only condition scans in it', { skip: NEEDS_CONDITIONS }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 1024, height: 700 } });
+    await page.goto(DARK_CONTRAST);
+    await page.emulateMedia({ colorScheme: 'dark' });
+    const results = await new A11yCoreBuilder({ page })
+      .withRules('contrast-minimum')
+      .conditions([{ colorScheme: 'light' }, { width: 320 }])
+      .analyze();
+    assert.deepStrictEqual(
+      results.conditionRuns.map((r) => [r.condition, r.environment.colorScheme]),
+      [['default', 'dark'], ['light', 'light'], ['width 320', 'dark']]
+    );
+    assert.strictEqual(await page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches), true);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder.conditions(): checks its list, and refuses frames(true) beside it', { skip: NEEDS_CONDITIONS }, async () => {
+  const builder = new A11yCoreBuilder({ page: { evaluate() {} } });
+  assert.throws(() => builder.conditions([{ colorScheme: 'sepia' }]), TypeError);
+  await assert.rejects(builder.conditions([{ width: 320 }]).frames(true).analyze(), /can't be combined yet/);
+});
+
 test('A11yCoreBuilder: without the listener hook, analyze() says once per scan that it would let the engine judge those handlers', { skip: NEEDS_NOTE }, async (t) => {
   const warnings = [];
   t.mock.method(console, 'warn', (msg) => { warnings.push(String(msg)); });
