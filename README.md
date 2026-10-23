@@ -395,6 +395,24 @@ results.engine.environment.forcedColors; // 'active'
 
 `browser.newContext({ forcedColors: 'active' })` does the same for a whole context, and `@playwright/test` takes it as a `use` option. The contrast rules still measure the page's own colors under forced colors, since WCAG judges contrast in those, so results match a scan with forced colors off; a contrast finding the engine couldn't measure that way carries `details.forcedColors: true`. When forced colors were active, `formatFailures()` adds a line saying so, since it's easy to miss on a CI agent with high contrast turned on.
 
+### Dark mode and phone width: scans under conditions
+
+A page can fail differently in dark mode or at phone width: text that reads well on white fails contrast on a dark background, and a target big enough at 1280 pixels shrinks at 320. `.conditions()` scans the page as it is, then under each condition, and returns one result:
+
+```js
+const results = await new A11yCoreBuilder({ page })
+  .conditions([{ colorScheme: 'dark' }, { width: 320 }, { colorScheme: 'dark', width: 320 }])
+  .analyze();
+```
+
+A condition sets a color scheme (`'light'` or `'dark'`, with `page.emulateMedia()`), a viewport width in CSS pixels (with `page.setViewportSize()`, keeping the height), or both. The viewport and color scheme are put back after the last scan, even when one throws.
+
+- A rule's outcome is its worst across the scans, so a contrast failure only in dark mode fails the rule.
+- An occurrence is listed once per element, rule and reason code, with the `conditions` it appeared under (`['default', 'dark']`); `formatFailures()` prints them as `seen in: default, dark`.
+- `results.conditionRuns` lists each scan's condition and `engine.environment`.
+
+Each condition is a full scan, so three conditions take about four times as long as one scan. `.frames(true)` can't be combined with `.conditions()` yet. A picture taken with `.screenshots()` under a condition has the condition in its file name.
+
 ### Registering a custom rule at runtime
 
 `@surea11y/core` supports registering additional rules per-scan via `engineOptions.customRules`. Use `.withCustomRules()` to register one:

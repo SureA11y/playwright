@@ -296,6 +296,14 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
       return this._elementRef ? this._attachElementRefs(frameOrPage, result) : result;
     };
 
+    // .conditions() (binding-base 1.6.0): the page as it is, then under each
+    // condition, merged into one result.
+    if (this._conditions) {
+      return this._applyReportOnly(
+        await this._scanUnderConditions(() => runInFrame(this._page, contextSelector), this._conditionDriver())
+      );
+    }
+
     if (!this._scanFrames) {
       return this._applyReportOnly(await runInFrame(this._page, contextSelector));
     }
@@ -329,6 +337,51 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
     }
 
     return { topFrame, frames };
+  }
+
+  /**
+   * The driver steps .conditions() scans need: the viewport's width with
+   * page.setViewportSize() (its height kept) and the color scheme with
+   * page.emulateMedia(). Each condition sets both, from the page as it was,
+   * so one condition's width or scheme doesn't carry into the next; at the
+   * end the viewport goes back, and if a condition set a scheme, the page
+   * is left in the scheme it had before (a scheme emulated by the caller, or
+   * the system's). The scheme is set back by name, not cleared with null:
+   * WebKit keeps a dark emulation that null should clear.
+   */
+  _conditionDriver() {
+    const page = this._page;
+    let schemeSet = false;
+    let viewport = null;
+    // The scheme a condition without one goes back to.
+    let baseScheme = 'light';
+    return {
+      save: async () => {
+        const before = await page.evaluate(() => ({
+          width: innerWidth,
+          height: innerHeight,
+          dark: matchMedia('(prefers-color-scheme: dark)').matches
+        }));
+        viewport = page.viewportSize() || { width: before.width, height: before.height };
+        baseScheme = before.dark ? 'dark' : 'light';
+        return { viewport };
+      },
+      apply: async (condition) => {
+        await page.setViewportSize({ width: condition.width || viewport.width, height: viewport.height });
+        if (condition.colorScheme) {
+          await page.emulateMedia({ colorScheme: condition.colorScheme });
+          schemeSet = true;
+        } else if (schemeSet) {
+          await page.emulateMedia({ colorScheme: baseScheme });
+          schemeSet = false;
+        }
+      },
+      restore: async (state) => {
+        if (!state) return;
+        await page.setViewportSize(state.viewport);
+        if (schemeSet) await page.emulateMedia({ colorScheme: baseScheme });
+      }
+    };
   }
 
   /**
