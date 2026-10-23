@@ -1,11 +1,18 @@
 'use strict';
 
-const { runa11yCoreInPage, internalsHookScript, listenerHookScript } = require('@surea11y/core');
+const {
+  runa11yCoreInPage,
+  internalsHookScript,
+  listenerHookScript,
+  liveRegionHookScript,
+  getAnnouncements
+} = require('@surea11y/core');
 const {
   A11yCoreBuilderBase,
   createInPageScan,
   rethrowEngineError,
-  queryOccurrenceElement
+  queryOccurrenceElement,
+  createInPageAnnouncements
 } = require('@surea11y/binding-base');
 
 // Playwright's page.evaluate(fn, arg) (and frame.evaluate(fn, arg), same
@@ -194,6 +201,45 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
       throw new TypeError('A11yCoreBuilder.installListenerHook() needs @surea11y/core 1.14.0 or later, which has listenerHookScript().');
     }
     return pageOrContext.addInitScript({ content: listenerHookScript() });
+  }
+
+  /**
+   * Installs @surea11y/core's opt-in live-region hook (core 1.14.0 and
+   * later), which records what the page's live regions are given from the
+   * load event on: live-region-announcements then asks about a region added
+   * with its text already in it, or shown and filled at once, and
+   * getAnnouncements() reads what the page made available to announce.
+   * Takes a Page, or a BrowserContext to cover every page it opens; call it
+   * before page.goto(). Resolves when the script is added.
+   * @param {import('playwright').Page | import('playwright').BrowserContext} pageOrContext
+   */
+  static installLiveRegionHook(pageOrContext) {
+    if (!pageOrContext || typeof pageOrContext.addInitScript !== 'function') {
+      throw new TypeError('A11yCoreBuilder.installLiveRegionHook() requires a Playwright Page or BrowserContext (with an .addInitScript() method).');
+    }
+    if (typeof liveRegionHookScript !== 'function') {
+      throw new TypeError('A11yCoreBuilder.installLiveRegionHook() needs @surea11y/core 1.14.0 or later, which has liveRegionHookScript().');
+    }
+    return pageOrContext.addInitScript({ content: liveRegionHookScript() });
+  }
+
+  /**
+   * What the page's live regions were given while shown and reachable by
+   * assistive technology, as the live-region hook recorded it:
+   * [{ text, politeness, time }] in the order the page did it, or null when
+   * the page has no hook. What the page made available to announce, not what
+   * a screen reader said. Takes a Page or a Frame.
+   * @param {import('playwright').Page | import('playwright').Frame} pageOrFrame
+   * @returns {Promise<Array<{ text: string, politeness: 'polite' | 'assertive', time: number }> | null>}
+   */
+  static async getAnnouncements(pageOrFrame) {
+    if (!pageOrFrame || typeof pageOrFrame.evaluate !== 'function') {
+      throw new TypeError('A11yCoreBuilder.getAnnouncements() requires a Playwright Page or Frame (with an .evaluate() method).');
+    }
+    if (typeof getAnnouncements !== 'function' || typeof createInPageAnnouncements !== 'function') {
+      throw new TypeError('A11yCoreBuilder.getAnnouncements() needs @surea11y/core 1.14.0 and @surea11y/binding-base 1.6.0 or later.');
+    }
+    return pageOrFrame.evaluate(createInPageAnnouncements(getAnnouncements));
   }
 
   /**
