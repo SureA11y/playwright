@@ -1,4 +1,4 @@
-import type { Page, BrowserContext, ElementHandle } from 'playwright';
+import type { Page, BrowserContext, ElementHandle, Frame } from 'playwright';
 import type * as Core from '@surea11y/core';
 
 // The result shapes are @surea11y/core's own types (shipped with it since
@@ -169,6 +169,24 @@ export class A11yCoreBuilder {
    * page.goto(), as installInternalsHook().
    */
   static installListenerHook(pageOrContext: Page | BrowserContext): Promise<void>;
+
+  /**
+   * Installs @surea11y/core's opt-in live-region hook (core 1.14.0 and
+   * later): live-region-announcements then also asks about a live region
+   * added with its text already in it, or shown and filled at once, and
+   * getAnnouncements() reads what the page made available to announce. Call
+   * it before page.goto().
+   */
+  static installLiveRegionHook(pageOrContext: Page | BrowserContext): Promise<void>;
+
+  /**
+   * What the page's live regions were given while shown and reachable, as
+   * the live-region hook recorded it, in order; null without the hook. Not
+   * what a screen reader said. Needs core 1.14.0 and binding-base 1.6.0.
+   */
+  static getAnnouncements(
+    pageOrFrame: Page | Frame
+  ): Promise<Array<{ text: string; politeness: 'polite' | 'assertive'; time: number }> | null>;
 
   /** Scope the scan to one region. Call multiple times for a multi-region union. */
   include(selector: string): this;
