@@ -63,4 +63,78 @@ for (const browserType of ['firefox', 'webkit']) {
       await browser.close();
     }
   });
+
+  test(`A11yCoreBuilder.installListenerHook() works in ${browserType}`, { skip: typeof require('@surea11y/core').listenerHookScript !== 'function' && 'needs @surea11y/core 1.14.0' }, async () => {
+    const browser = await playwright[browserType].launch();
+    try {
+      const page = await browser.newPage();
+      await A11yCoreBuilder.installListenerHook(page);
+      await page.goto('data:text/html,' + encodeURIComponent(
+        '<!doctype html><html lang="en"><head><title>t</title></head><body><main><h1>Hi</h1>' +
+        '<div id="save" role="button" tabindex="0">Save</div>' +
+        "<script>document.getElementById('save').addEventListener('click', () => {});</script>" +
+        '</main></body></html>'
+      ));
+      const results = await new A11yCoreBuilder({ page }).withRules('click-handler-keyboard-operable').analyze();
+      assert.strictEqual(results.engine.environment.listenerHook, 'early');
+      assert.strictEqual(results.checksResults[0].outcome, 'fail');
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`A11yCoreBuilder.installLiveRegionHook() and getAnnouncements() work in ${browserType}`, { skip: !(typeof require('@surea11y/core').liveRegionHookScript === 'function' && typeof require('@surea11y/binding-base').createInPageAnnouncements === 'function') && 'needs @surea11y/core 1.14.0 and @surea11y/binding-base 1.6.0' }, async () => {
+    const browser = await playwright[browserType].launch();
+    try {
+      const page = await browser.newPage();
+      await A11yCoreBuilder.installLiveRegionHook(page);
+      await page.goto('data:text/html,' + encodeURIComponent(
+        '<!doctype html><html lang="en"><head><title>t</title></head><body><main><h1>Hi</h1>' +
+        '<div id="status" role="status"></div><div id="h" role="status" hidden></div></main></body></html>'
+      ));
+      await page.evaluate(() => { document.getElementById('status').textContent = 'Saved'; });
+      await page.evaluate(() => { const h = document.getElementById('h'); h.hidden = false; h.textContent = 'Together'; });
+      const said = await A11yCoreBuilder.getAnnouncements(page);
+      assert.deepStrictEqual(said.map((a) => a.text), ['Saved']);
+      const results = await new A11yCoreBuilder({ page }).withRules('live-region-announcements').analyze();
+      assert.strictEqual(results.engine.environment.liveRegionHook, 'early');
+      assert.deepStrictEqual(
+        results.checksResults[0].occurrences.map((o) => o.data.details.reasonCode),
+        ['LIVE_REGION_SHOWN_AND_FILLED']
+      );
+    } finally {
+      await browser.close();
+    }
+  });
+
+  // .conditions() sets the color scheme with page.emulateMedia() and the width
+  // with page.setViewportSize(), which every Playwright engine supports.
+  test(`A11yCoreBuilder.conditions() scans dark mode and a phone width in ${browserType}`, { skip: typeof require('@surea11y/binding-base').mergeConditionResults !== 'function' && 'needs @surea11y/binding-base 1.6.0' }, async () => {
+    const browser = await playwright[browserType].launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 1024, height: 700 } });
+      // Reads well in the light scheme; in the dark one its text is #444 on #222.
+      await page.goto('data:text/html,' + encodeURIComponent(
+        '<!doctype html><html lang="en"><head><title>t</title><style>' +
+        'body { color: #111; background: #fff } ' +
+        '@media (prefers-color-scheme: dark) { body { color: #444; background: #222 } }' +
+        '</style></head><body><main><h1>Hi</h1><p>Read me</p></main></body></html>'
+      ));
+      const results = await new A11yCoreBuilder({ page })
+        .withRules('contrast-minimum')
+        .conditions([{ colorScheme: 'dark' }, { width: 320 }])
+        .analyze();
+      assert.deepStrictEqual(
+        results.conditionRuns.map((r) => [r.condition, r.environment.viewport.width, r.environment.colorScheme]),
+        [['default', 1024, 'light'], ['dark', 1024, 'dark'], ['width 320', 320, 'light']]
+      );
+      const check = results.checksResults.find((r) => r.ruleId === 'contrast-minimum');
+      assert.strictEqual(check.outcome, 'fail');
+      for (const o of check.occurrences) assert.deepStrictEqual(o.conditions, ['dark']);
+      assert.deepStrictEqual(page.viewportSize(), { width: 1024, height: 700 });
+      assert.strictEqual(await page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches), false);
+    } finally {
+      await browser.close();
+    }
+  });
 }

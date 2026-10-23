@@ -15,7 +15,9 @@ import {
   type CheckResult,
   type EngineErrorCode,
   type Occurrence,
-  type ScanGap
+  type ScanGap,
+  getGatingFailures,
+  SEVERITIES
 } from '../../src/index';
 
 declare const page: Page;
@@ -24,6 +26,11 @@ declare const context: BrowserContext;
 async function main(): Promise<void> {
   await A11yCoreBuilder.installInternalsHook(page);
   await A11yCoreBuilder.installInternalsHook(context);
+  await A11yCoreBuilder.installListenerHook(page);
+  await A11yCoreBuilder.installListenerHook(context);
+  await A11yCoreBuilder.installLiveRegionHook(page);
+  const said = await A11yCoreBuilder.getAnnouncements(page);
+  const texts: string[] = (said || []).map((a) => `${a.politeness}: ${a.text}`);
   const planned = new A11yCoreBuilder({ page }).withWcag('2.2', 'aa').wcagLevel('aa');
   const plannedIds: string[] = planned.plannedChecks().map((c) => c.ruleId).concat(planned.plannedCriteria().map((r) => r.id));
   void plannedIds;
@@ -110,3 +117,9 @@ async function main(): Promise<void> {
 }
 
 main();
+
+declare const gateResult: Parameters<typeof getGatingFailures>[0];
+const gatingIds: string[] = getGatingFailures(gateResult, { failOnSeverity: SEVERITIES[2] }).map((c) => c.ruleId);
+
+declare const conditionResult: A11yCoreResult;
+const seenIn: string[] = (conditionResult.checksResults[0].occurrences[0].conditions || []).concat((conditionResult.conditionRuns || []).map((r) => r.condition));

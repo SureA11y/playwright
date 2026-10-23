@@ -1,11 +1,18 @@
 'use strict';
 
-const { runa11yCoreInPage, internalsHookScript } = require('@surea11y/core');
+const {
+  runa11yCoreInPage,
+  internalsHookScript,
+  listenerHookScript,
+  liveRegionHookScript,
+  getAnnouncements
+} = require('@surea11y/core');
 const {
   A11yCoreBuilderBase,
   createInPageScan,
   rethrowEngineError,
-  queryOccurrenceElement
+  queryOccurrenceElement,
+  createInPageAnnouncements
 } = require('@surea11y/binding-base');
 
 // Playwright's page.evaluate(fn, arg) (and frame.evaluate(fn, arg), same
@@ -177,6 +184,65 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
   }
 
   /**
+   * Installs @surea11y/core's opt-in listener hook (core 1.14.0 and later),
+   * so the keyboard rules see the click, key, focus and mouse listeners a
+   * page adds from script (addEventListener, or an onclick-style property),
+   * not only inline handler attributes. Takes a Page, or a BrowserContext to
+   * cover every page it opens. Call it before page.goto(), as
+   * installInternalsHook(): the page already loaded when it is called
+   * doesn't get it until it navigates. Resolves when the script is added.
+   * @param {import('playwright').Page | import('playwright').BrowserContext} pageOrContext
+   */
+  static installListenerHook(pageOrContext) {
+    if (!pageOrContext || typeof pageOrContext.addInitScript !== 'function') {
+      throw new TypeError('A11yCoreBuilder.installListenerHook() requires a Playwright Page or BrowserContext (with an .addInitScript() method).');
+    }
+    if (typeof listenerHookScript !== 'function') {
+      throw new TypeError('A11yCoreBuilder.installListenerHook() needs @surea11y/core 1.14.0 or later, which has listenerHookScript().');
+    }
+    return pageOrContext.addInitScript({ content: listenerHookScript() });
+  }
+
+  /**
+   * Installs @surea11y/core's opt-in live-region hook (core 1.14.0 and
+   * later), which records what the page's live regions are given from the
+   * load event on: live-region-announcements then asks about a region added
+   * with its text already in it, or shown and filled at once, and
+   * getAnnouncements() reads what the page made available to announce.
+   * Takes a Page, or a BrowserContext to cover every page it opens; call it
+   * before page.goto(). Resolves when the script is added.
+   * @param {import('playwright').Page | import('playwright').BrowserContext} pageOrContext
+   */
+  static installLiveRegionHook(pageOrContext) {
+    if (!pageOrContext || typeof pageOrContext.addInitScript !== 'function') {
+      throw new TypeError('A11yCoreBuilder.installLiveRegionHook() requires a Playwright Page or BrowserContext (with an .addInitScript() method).');
+    }
+    if (typeof liveRegionHookScript !== 'function') {
+      throw new TypeError('A11yCoreBuilder.installLiveRegionHook() needs @surea11y/core 1.14.0 or later, which has liveRegionHookScript().');
+    }
+    return pageOrContext.addInitScript({ content: liveRegionHookScript() });
+  }
+
+  /**
+   * What the page's live regions were given while shown and reachable by
+   * assistive technology, as the live-region hook recorded it:
+   * [{ text, politeness, time }] in the order the page did it, or null when
+   * the page has no hook. What the page made available to announce, not what
+   * a screen reader said. Takes a Page or a Frame.
+   * @param {import('playwright').Page | import('playwright').Frame} pageOrFrame
+   * @returns {Promise<Array<{ text: string, politeness: 'polite' | 'assertive', time: number }> | null>}
+   */
+  static async getAnnouncements(pageOrFrame) {
+    if (!pageOrFrame || typeof pageOrFrame.evaluate !== 'function') {
+      throw new TypeError('A11yCoreBuilder.getAnnouncements() requires a Playwright Page or Frame (with an .evaluate() method).');
+    }
+    if (typeof getAnnouncements !== 'function' || typeof createInPageAnnouncements !== 'function') {
+      throw new TypeError('A11yCoreBuilder.getAnnouncements() needs @surea11y/core 1.14.0 and @surea11y/binding-base 1.6.0 or later.');
+    }
+    return pageOrFrame.evaluate(createInPageAnnouncements(getAnnouncements));
+  }
+
+  /**
    * @param {{ page: import('playwright').Page, url?: string }} opts
    *   `page` must already be navigated to and settled at the URL to scan --
    *   this class does not navigate for you.
@@ -230,6 +296,14 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
       return this._elementRef ? this._attachElementRefs(frameOrPage, result) : result;
     };
 
+    // .conditions() (binding-base 1.6.0): the page as it is, then under each
+    // condition, merged into one result.
+    if (this._conditions) {
+      return this._applyReportOnly(
+        await this._scanUnderConditions(() => runInFrame(this._page, contextSelector), this._conditionDriver())
+      );
+    }
+
     if (!this._scanFrames) {
       return this._applyReportOnly(await runInFrame(this._page, contextSelector));
     }
@@ -263,6 +337,50 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
     }
 
     return { topFrame, frames };
+  }
+
+  /**
+   * The driver steps .conditions() scans need: the viewport's width with
+   * page.setViewportSize() (its height kept) and the color scheme with
+   * page.emulateMedia(). Each condition sets both, from the page as it was,
+   * so one condition's width or scheme doesn't carry into the next; at the
+   * end the viewport goes back, and if a condition set a scheme, the page
+   * is left dark if it was dark before (a scheme emulated by the caller, or
+   * the system's), or with the emulation cleared.
+   */
+  _conditionDriver() {
+    const page = this._page;
+    let schemeSet = false;
+    let viewport = null;
+    // The scheme a condition without one goes back to.
+    let baseScheme = null;
+    return {
+      save: async () => {
+        const before = await page.evaluate(() => ({
+          width: innerWidth,
+          height: innerHeight,
+          dark: matchMedia('(prefers-color-scheme: dark)').matches
+        }));
+        viewport = page.viewportSize() || { width: before.width, height: before.height };
+        baseScheme = before.dark ? 'dark' : null;
+        return { viewport };
+      },
+      apply: async (condition) => {
+        await page.setViewportSize({ width: condition.width || viewport.width, height: viewport.height });
+        if (condition.colorScheme) {
+          await page.emulateMedia({ colorScheme: condition.colorScheme });
+          schemeSet = true;
+        } else if (schemeSet) {
+          await page.emulateMedia({ colorScheme: baseScheme });
+          schemeSet = false;
+        }
+      },
+      restore: async (state) => {
+        if (!state) return;
+        await page.setViewportSize(state.viewport);
+        if (schemeSet) await page.emulateMedia({ colorScheme: baseScheme });
+      }
+    };
   }
 
   /**
