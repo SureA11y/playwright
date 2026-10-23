@@ -1,6 +1,6 @@
 'use strict';
 
-const { runa11yCoreInPage, internalsHookScript } = require('@surea11y/core');
+const { runa11yCoreInPage, internalsHookScript, listenerHookScript } = require('@surea11y/core');
 const {
   A11yCoreBuilderBase,
   createInPageScan,
@@ -174,6 +174,26 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
       throw new TypeError('A11yCoreBuilder.installInternalsHook() requires a Playwright Page or BrowserContext (with an .addInitScript() method).');
     }
     return pageOrContext.addInitScript({ content: internalsHookScript() });
+  }
+
+  /**
+   * Installs @surea11y/core's opt-in listener hook (core 1.14.0 and later),
+   * so the keyboard rules see the click, key, focus and mouse listeners a
+   * page adds from script (addEventListener, or an onclick-style property),
+   * not only inline handler attributes. Takes a Page, or a BrowserContext to
+   * cover every page it opens. Call it before page.goto(), as
+   * installInternalsHook(): the page already loaded when it is called
+   * doesn't get it until it navigates. Resolves when the script is added.
+   * @param {import('playwright').Page | import('playwright').BrowserContext} pageOrContext
+   */
+  static installListenerHook(pageOrContext) {
+    if (!pageOrContext || typeof pageOrContext.addInitScript !== 'function') {
+      throw new TypeError('A11yCoreBuilder.installListenerHook() requires a Playwright Page or BrowserContext (with an .addInitScript() method).');
+    }
+    if (typeof listenerHookScript !== 'function') {
+      throw new TypeError('A11yCoreBuilder.installListenerHook() needs @surea11y/core 1.14.0 or later, which has listenerHookScript().');
+    }
+    return pageOrContext.addInitScript({ content: listenerHookScript() });
   }
 
   /**

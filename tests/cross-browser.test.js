@@ -63,4 +63,23 @@ for (const browserType of ['firefox', 'webkit']) {
       await browser.close();
     }
   });
+
+  test(`A11yCoreBuilder.installListenerHook() works in ${browserType}`, async () => {
+    const browser = await playwright[browserType].launch();
+    try {
+      const page = await browser.newPage();
+      await A11yCoreBuilder.installListenerHook(page);
+      await page.goto('data:text/html,' + encodeURIComponent(
+        '<!doctype html><html lang="en"><head><title>t</title></head><body><main><h1>Hi</h1>' +
+        '<div id="save" role="button" tabindex="0">Save</div>' +
+        "<script>document.getElementById('save').addEventListener('click', () => {});</script>" +
+        '</main></body></html>'
+      ));
+      const results = await new A11yCoreBuilder({ page }).withRules('click-handler-keyboard-operable').analyze();
+      assert.strictEqual(results.engine.environment.listenerHook, 'early');
+      assert.strictEqual(results.checksResults[0].outcome, 'fail');
+    } finally {
+      await browser.close();
+    }
+  });
 }
