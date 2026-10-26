@@ -1,14 +1,11 @@
 'use strict';
 
 // getGatingFailures() and SEVERITIES, re-exported from @surea11y/binding-base
-// 1.6.0, and formatFailures()'s failOnSeverity. Skipped with an older
-// binding-base, which has neither.
+// 1.6.0, and formatFailures()'s failOnSeverity.
 
 const test = require('node:test');
 const assert = require('node:assert');
 const { getGatingFailures, formatFailures, SEVERITIES } = require('../src/index.js');
-
-const NEEDS_GATE = typeof getGatingFailures !== 'function' && 'needs @surea11y/binding-base 1.6.0';
 
 const result = {
   checksResults: [
@@ -18,7 +15,7 @@ const result = {
   ]
 };
 
-test('getGatingFailures(): only the failing rules at the level or above, and formatFailures() marks the rest', { skip: NEEDS_GATE }, () => {
+test('getGatingFailures(): only the failing rules at the level or above, and formatFailures() marks the rest', () => {
   assert.deepStrictEqual(SEVERITIES, ['minor', 'moderate', 'serious', 'critical']);
   assert.deepStrictEqual(getGatingFailures(result).map((c) => c.ruleId), ['img-alt-present', 'aria-allowed-attr']);
   assert.deepStrictEqual(getGatingFailures(result, { failOnSeverity: 'serious' }).map((c) => c.ruleId), ['img-alt-present']);

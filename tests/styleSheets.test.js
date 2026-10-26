@@ -22,11 +22,7 @@ function serve(handler) {
   });
 }
 
-const supported =
-  typeof A11yCoreBuilder.prototype._styleSheetEngineOptions === 'function' &&
-  typeof require('@surea11y/core').preloadStyleSheets === 'function';
-
-test('a style sheet from another origin is fetched and read', { skip: !supported && 'needs binding-base 1.6.0 and core 1.14.0' }, async (t) => {
+test('a style sheet from another origin is fetched and read', async (t) => {
   const cdn = await serve((req, res) => {
     res.writeHead(200, { 'content-type': 'text/css' });
     res.end(LOCK);

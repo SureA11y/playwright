@@ -64,7 +64,7 @@ for (const browserType of ['firefox', 'webkit']) {
     }
   });
 
-  test(`A11yCoreBuilder.installListenerHook() works in ${browserType}`, { skip: typeof require('@surea11y/core').listenerHookScript !== 'function' && 'needs @surea11y/core 1.14.0' }, async () => {
+  test(`A11yCoreBuilder.installListenerHook() works in ${browserType}`, async () => {
     const browser = await playwright[browserType].launch();
     try {
       const page = await browser.newPage();
@@ -109,7 +109,7 @@ for (const browserType of ['firefox', 'webkit']) {
 
   // .conditions() sets the color scheme with page.emulateMedia() and the width
   // with page.setViewportSize(), which every Playwright engine supports.
-  test(`A11yCoreBuilder.conditions() scans dark mode and a phone width in ${browserType}`, { skip: typeof require('@surea11y/binding-base').mergeConditionResults !== 'function' && 'needs @surea11y/binding-base 1.6.0' }, async () => {
+  test(`A11yCoreBuilder.conditions() scans dark mode and a phone width in ${browserType}`, async () => {
     const browser = await playwright[browserType].launch();
     try {
       const page = await browser.newPage({ viewport: { width: 1024, height: 700 } });
