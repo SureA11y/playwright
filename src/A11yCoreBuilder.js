@@ -1,18 +1,13 @@
 'use strict';
 
-const {
-  runa11yCoreInPage,
-  internalsHookScript,
-  listenerHookScript,
-  liveRegionHookScript,
-  getAnnouncements
-} = require('@surea11y/core');
+const core = require('@surea11y/core');
+
+const { runa11yCoreInPage, internalsHookScript } = core;
 const {
   A11yCoreBuilderBase,
   createInPageScan,
   rethrowEngineError,
-  queryOccurrenceElement,
-  createInPageAnnouncements
+  queryOccurrenceElement
 } = require('@surea11y/binding-base');
 
 // Playwright's page.evaluate(fn, arg) (and frame.evaluate(fn, arg), same
@@ -184,62 +179,50 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
   }
 
   /**
-   * Installs @surea11y/core's opt-in listener hook (core 1.14.0 and later),
-   * so the keyboard rules see the click, key, focus and mouse listeners a
-   * page adds from script (addEventListener, or an onclick-style property),
-   * not only inline handler attributes. Takes a Page, or a BrowserContext to
-   * cover every page it opens. Call it before page.goto(), as
-   * installInternalsHook(): the page already loaded when it is called
-   * doesn't get it until it navigates. Resolves when the script is added.
+   * Installs @surea11y/core's opt-in listener hook, so the keyboard rules
+   * see the event listeners the page adds from script (`addEventListener`,
+   * `el.onclick = fn`), which no page script can list. Without it a
+   * `<div role="button">` given a click listener from script goes
+   * unjudged. Takes a Page, or a BrowserContext to cover every page it
+   * opens. Call it before page.goto(), as installInternalsHook(). Needs
+   * @surea11y/core 1.14.0 or later. Resolves when the script is added.
    * @param {import('playwright').Page | import('playwright').BrowserContext} pageOrContext
    */
   static installListenerHook(pageOrContext) {
-    if (!pageOrContext || typeof pageOrContext.addInitScript !== 'function') {
-      throw new TypeError('A11yCoreBuilder.installListenerHook() requires a Playwright Page or BrowserContext (with an .addInitScript() method).');
-    }
-    if (typeof listenerHookScript !== 'function') {
-      throw new TypeError('A11yCoreBuilder.installListenerHook() needs @surea11y/core 1.14.0 or later, which has listenerHookScript().');
-    }
-    return pageOrContext.addInitScript({ content: listenerHookScript() });
+    return installHook(pageOrContext, 'installListenerHook', 'listenerHookScript');
   }
 
   /**
-   * Installs @surea11y/core's opt-in live-region hook (core 1.14.0 and
-   * later), which records what the page's live regions are given from the
-   * load event on: live-region-announcements then asks about a region added
-   * with its text already in it, or shown and filled at once, and
-   * getAnnouncements() reads what the page made available to announce.
-   * Takes a Page, or a BrowserContext to cover every page it opens; call it
-   * before page.goto(). Resolves when the script is added.
+   * Installs @surea11y/core's opt-in live-region hook, which records what
+   * the page's live regions are given while it runs: the scan then asks
+   * about a region added with its text already in it, and
+   * A11yCoreBuilder.announcements(page) returns what the page made
+   * available to announce. Takes a Page, or a BrowserContext to cover every
+   * page it opens. Call it before page.goto(), as installInternalsHook().
+   * Needs @surea11y/core 1.14.0 or later.
    * @param {import('playwright').Page | import('playwright').BrowserContext} pageOrContext
    */
   static installLiveRegionHook(pageOrContext) {
-    if (!pageOrContext || typeof pageOrContext.addInitScript !== 'function') {
-      throw new TypeError('A11yCoreBuilder.installLiveRegionHook() requires a Playwright Page or BrowserContext (with an .addInitScript() method).');
-    }
-    if (typeof liveRegionHookScript !== 'function') {
-      throw new TypeError('A11yCoreBuilder.installLiveRegionHook() needs @surea11y/core 1.14.0 or later, which has liveRegionHookScript().');
-    }
-    return pageOrContext.addInitScript({ content: liveRegionHookScript() });
+    return installHook(pageOrContext, 'installLiveRegionHook', 'liveRegionHookScript');
   }
 
   /**
-   * What the page's live regions were given while shown and reachable by
-   * assistive technology, as the live-region hook recorded it:
-   * [{ text, politeness, time }] in the order the page did it, or null when
-   * the page has no hook. What the page made available to announce, not what
-   * a screen reader said. Takes a Page or a Frame.
-   * @param {import('playwright').Page | import('playwright').Frame} pageOrFrame
-   * @returns {Promise<Array<{ text: string, politeness: 'polite' | 'assertive', time: number }> | null>}
+   * What `page`'s live regions were given since it loaded, as the
+   * live-region hook recorded it, in order: `[{ text, politeness, time,
+   * order, behindModal, selector }]`, each region named by its selector (and
+   * `shadowHostSelectors` inside a shadow root; null for a region that has
+   * since left the page). null where installLiveRegionHook() wasn't called
+   * before the page loaded. What the page made available to announce, not
+   * what a screen reader said. A text given to a region behind an open
+   * modal dialog, which assistive technology did not get, is listed only
+   * with `{ includeBehindModal: true }`, marked `behindModal`. Needs
+   * @surea11y/core 1.14.0 or later.
+   * @param {import('playwright').Page} page
+   * @param {{ includeBehindModal?: boolean }} [options]
+   * @returns {Promise<Array<object>|null>}
    */
-  static async getAnnouncements(pageOrFrame) {
-    if (!pageOrFrame || typeof pageOrFrame.evaluate !== 'function') {
-      throw new TypeError('A11yCoreBuilder.getAnnouncements() requires a Playwright Page or Frame (with an .evaluate() method).');
-    }
-    if (typeof getAnnouncements !== 'function' || typeof createInPageAnnouncements !== 'function') {
-      throw new TypeError('A11yCoreBuilder.getAnnouncements() needs @surea11y/core 1.14.0 and @surea11y/binding-base 1.6.0 or later.');
-    }
-    return pageOrFrame.evaluate(createInPageAnnouncements(getAnnouncements));
+  static announcements(page, options) {
+    return new A11yCoreBuilder({ page })._announcementsIn(page, options);
   }
 
   /**
@@ -469,6 +452,19 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
     if (!element) await handle.dispose();
     return element;
   }
+}
+
+// One of core's hook scripts (1.14.0 and later for the listener and
+// live-region hooks), added as an init script, which runs before the page's
+// own scripts.
+function installHook(pageOrContext, method, scriptName) {
+  if (!pageOrContext || typeof pageOrContext.addInitScript !== 'function') {
+    throw new TypeError(`A11yCoreBuilder.${method}() requires a Playwright Page or BrowserContext (with an .addInitScript() method).`);
+  }
+  if (typeof core[scriptName] !== 'function') {
+    throw new Error(`A11yCoreBuilder.${method}() needs @surea11y/core 1.14.0 or later, which has ${scriptName}().`);
+  }
+  return pageOrContext.addInitScript({ content: core[scriptName]() });
 }
 
 module.exports = { A11yCoreBuilder };
