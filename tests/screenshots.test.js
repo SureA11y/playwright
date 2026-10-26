@@ -53,7 +53,7 @@ const CHILD = `<!doctype html><html lang="en"><head><title>Child</title></head><
 const COLOURS = {
   '#top': [255, 165, 0],
   '#inner': [0, 128, 0],
-  'html > body > main > x-card >>> img': [128, 0, 128],
+  'html > body > main > x-card >>> img:not(* > *)': [128, 0, 128],
   '#framed': [0, 128, 128]
 };
 
@@ -128,7 +128,7 @@ for (const browserName of ['chromium', 'firefox', 'webkit']) {
       const top = results.topFrame.checksResults.find((c) => c.ruleId === 'img-alt-present');
       const found = new Map(top.occurrences.map((o) => [where(o), o]));
       const byWhere = { get: (name) => found.get(name) || assert.fail(`${name} is not among the findings: ${[...found.keys()].join(', ')}`) };
-      for (const name of ['#top', '#inner', 'html > body > main > x-card >>> img']) {
+      for (const name of ['#top', '#inner', 'html > body > main > x-card >>> img:not(* > *)']) {
         const shot = byWhere.get(name).screenshot;
         assert.ok(shot && shot.buffer, `${name}: ${JSON.stringify(shot)}`);
         const png = decodePng(shot.buffer);

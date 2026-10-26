@@ -966,10 +966,13 @@ test('A11yCoreBuilder: elementRef(true) resolves a shadow-DOM occurrence through
     const [occurrence] = rule.occurrences;
     // The selector holds inside the shadow root only; the host leads there.
     // Looked up in the document (even with Playwright's shadow-piercing
-    // page.$()), it finds the light-DOM image, which has its alt.
+    // page.$()), it doesn't find the shadow image: core 1.14 gives an
+    // element at the top of a shadow root a selector that matches no
+    // light-DOM element, where 1.13 found the light-DOM image.
     assert.deepStrictEqual(occurrence.shadowHostSelectors, ['#card']);
     const viaDocument = await page.$(occurrence.selector);
-    assert.strictEqual(await viaDocument.evaluate((el) => el.getAttribute('src')), 'light.png');
+    const foundViaDocument = viaDocument && await viaDocument.evaluate((el) => el.getAttribute('src'));
+    assert.notStrictEqual(foundViaDocument, 'shadow.png');
 
     assert.ok(occurrence.elementHandle, 'occurrence should carry a live ElementHandle');
     assert.strictEqual(await occurrence.elementHandle.evaluate((el) => el.getAttribute('src')), 'shadow.png');
@@ -1453,7 +1456,6 @@ const HAS_LISTENER_HOOK = typeof require('@surea11y/core').listenerHookScript ==
 const HAS_LISTENER_NOTE = require('@surea11y/binding-base').getScanNotes({
   checksResults: [{ outcome: 'cantTell', occurrences: [{ selector: 'div', data: { details: { reasonCode: 'CLICK_HANDLER_NO_KEY_HANDLER' } } }] }]
 }).some((n) => n.kind === 'listener-hook');
-const NEEDS_HOOK = !HAS_LISTENER_HOOK && 'needs @surea11y/core 1.14.0';
 const NEEDS_NOTE = !(HAS_LISTENER_HOOK && HAS_LISTENER_NOTE) && 'needs @surea11y/core 1.14.0 and @surea11y/binding-base 1.6.0';
 
 // A custom button given its click listener from script, with no key listener
@@ -1466,7 +1468,7 @@ const SCRIPTED_BUTTON = 'data:text/html,' + encodeURIComponent(
   '</main></body></html>'
 );
 
-test('A11yCoreBuilder.installListenerHook(): a button given its click listener from script is unseen without it, and fails with it', { skip: NEEDS_HOOK }, async () => {
+test('A11yCoreBuilder.installListenerHook(): a button given its click listener from script is unseen without it, and fails with it', async () => {
   const browser = await chromium.launch();
   try {
     const without = await browser.newPage();
@@ -1488,7 +1490,7 @@ test('A11yCoreBuilder.installListenerHook(): a button given its click listener f
   }
 });
 
-test('A11yCoreBuilder.installListenerHook(): on a BrowserContext, every page it opens has the hook, beside the internals hook', { skip: NEEDS_HOOK }, async () => {
+test('A11yCoreBuilder.installListenerHook(): on a BrowserContext, every page it opens has the hook, beside the internals hook', async () => {
   const browser = await chromium.launch();
   try {
     const context = await browser.newContext();
@@ -1561,8 +1563,6 @@ test('A11yCoreBuilder.installLiveRegionHook() and getAnnouncements() throw a Typ
   }
 });
 
-const HAS_CONDITIONS = typeof require('@surea11y/binding-base').mergeConditionResults === 'function';
-const NEEDS_CONDITIONS = !HAS_CONDITIONS && 'needs @surea11y/binding-base 1.6.0';
 // Reads well in the light scheme; in the dark one its text is #444 on #222.
 const DARK_CONTRAST = 'data:text/html,' + encodeURIComponent(
   '<!doctype html><html lang="en"><head><title>t</title><style>' +
@@ -1571,7 +1571,7 @@ const DARK_CONTRAST = 'data:text/html,' + encodeURIComponent(
   '</style></head><body><main><h1>Hi</h1><p id="note">Read me</p></main></body></html>'
 );
 
-test('A11yCoreBuilder.conditions(): a failure only in dark mode fails the merged result, labelled, and the page is put back', { skip: NEEDS_CONDITIONS }, async () => {
+test('A11yCoreBuilder.conditions(): a failure only in dark mode fails the merged result, labelled, and the page is put back', async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport: { width: 1024, height: 700 } });
@@ -1595,7 +1595,7 @@ test('A11yCoreBuilder.conditions(): a failure only in dark mode fails the merged
   }
 });
 
-test('A11yCoreBuilder.conditions(): a dark scheme the caller emulated stays dark, and a width-only condition scans in it', { skip: NEEDS_CONDITIONS }, async () => {
+test('A11yCoreBuilder.conditions(): a dark scheme the caller emulated stays dark, and a width-only condition scans in it', async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport: { width: 1024, height: 700 } });
@@ -1615,7 +1615,7 @@ test('A11yCoreBuilder.conditions(): a dark scheme the caller emulated stays dark
   }
 });
 
-test('A11yCoreBuilder.conditions(): checks its list, and refuses frames(true) beside it', { skip: NEEDS_CONDITIONS }, async () => {
+test('A11yCoreBuilder.conditions(): checks its list, and refuses frames(true) beside it', async () => {
   const builder = new A11yCoreBuilder({ page: { evaluate() {} } });
   assert.throws(() => builder.conditions([{ colorScheme: 'sepia' }]), TypeError);
   await assert.rejects(builder.conditions([{ width: 320 }]).frames(true).analyze(), /can't be combined yet/);
