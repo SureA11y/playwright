@@ -83,7 +83,7 @@ for (const browserType of ['firefox', 'webkit']) {
     }
   });
 
-  test(`A11yCoreBuilder.installLiveRegionHook() and getAnnouncements() work in ${browserType}`, { skip: !(typeof require('@surea11y/core').liveRegionHookScript === 'function' && typeof require('@surea11y/binding-base').createInPageAnnouncements === 'function') && 'needs @surea11y/core 1.14.0 and @surea11y/binding-base 1.6.0' }, async () => {
+  test(`A11yCoreBuilder.installLiveRegionHook() and announcements() work in ${browserType}`, async () => {
     const browser = await playwright[browserType].launch();
     try {
       const page = await browser.newPage();
@@ -94,8 +94,8 @@ for (const browserType of ['firefox', 'webkit']) {
       ));
       await page.evaluate(() => { document.getElementById('status').textContent = 'Saved'; });
       await page.evaluate(() => { const h = document.getElementById('h'); h.hidden = false; h.textContent = 'Together'; });
-      const said = await A11yCoreBuilder.getAnnouncements(page);
-      assert.deepStrictEqual(said.map((a) => a.text), ['Saved']);
+      const said = await A11yCoreBuilder.announcements(page);
+      assert.deepStrictEqual(said.map((a) => [a.text, a.selector]), [['Saved', '#status']]);
       const results = await new A11yCoreBuilder({ page }).withRules('live-region-announcements').analyze();
       assert.strictEqual(results.engine.environment.liveRegionHook, 'early');
       assert.deepStrictEqual(

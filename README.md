@@ -114,7 +114,7 @@ const results = await new A11yCoreBuilder({ page })
 
 A batch job that writes `getScanGaps(results)` into its own report can pass `.logger(() => {})` to keep its output to the report, and `.logger(null)` brings `console.warn` back. Anything other than a function or `null` throws a `TypeError` at the call, and a later call replaces the logger. Either way, `getScanGaps(results)` still lists every gap.
 
-`getScanNotes(results)` says how the page was scanned, which a gap doesn't cover, and nothing was left out: `'forced-colors'` when the page was shown in [forced colors](#forced-colors), `'internals-hook'` when the scan asked about web components it could have read with the [internals hook](#web-components-the-internals-hook), and `'listener-hook'` when it asked about handlers whose keyboard equivalent the [listener hook](#listeners-added-from-script-the-listener-hook) would have let it see. `.analyze()` also prints the internals and listener notes, once per scan each, and a `.logger()` receives it (check `kind` to tell a note from a gap).
+`getScanNotes(results)` says how the page was scanned, which a gap doesn't cover, and nothing was left out: `'forced-colors'` when the page was shown in [forced colors](#forced-colors), `'internals-hook'` when the scan asked about web components it could have read with the [internals hook](#web-components-the-internals-hook), and `'listener-hook'` or `'live-region-hook'` when findings that the [listener hook](#click-handlers-added-from-script-the-listener-hook) or the [live-region hook](#live-regions-the-live-region-hook-and-announcements) would have decided were judged without it (with `findingCount` and the `rules`). `.analyze()` also prints each hook note, once per scan, and a `.logger()` receives it (check `kind` to tell a note from a gap).
 
 ### Errors from the engine
 
@@ -179,7 +179,7 @@ expect(getGatingFailures(results, gate), formatFailures(results, gate)).toEqual(
 
 ### Readable console/CI output on failure
 
-`expect(x).toEqual([])` alone gets you a *working* gate, but the failure message is a raw, deeply-nested object diff — hundreds of lines for a handful of violations. `formatFailures(results)` turns that into a short, scannable block (one entry per occurrence, numbered, with rule ID/severity/selector/hint) that you hand to your assertion library's own failure-message parameter, as above. A real failure then prints:
+`expect(x).toEqual([])` alone gets you a *working* gate, but the failure message is a raw, deeply-nested object diff — hundreds of lines for a handful of violations. `formatFailures(results)` turns that into a short, scannable block (one entry per occurrence, numbered, with rule ID/severity/selector/hint) that you hand to your assertion library's own failure-message parameter, as above. Each occurrence is read by its own outcome, and the list follows the order a review takes: failures first, then the [questions](#findings-that-need-review-leans-and-how-to-check) that likely fail, those that likely pass, and those only a person can answer. A real failure then prints:
 
 ```
 Error: 1) button-name-present (serious): This button has no accessible name.
@@ -196,7 +196,7 @@ Scanned with @surea11y/core 1.12.0.
 
 Given the whole result, as here, it also lists what the scan left out (see `getScanGaps()` above; a scan whose `.include()` matched nothing never reads as "No accessibility violations found.") and its notes (`getScanNotes()`, such as a page shown in forced colors), and ends with the core release that produced the result. It still accepts `results.checksResults` alone, without those two parts. A finding inside a shadow tree is located through its shadow hosts, as `my-app >>> my-card >>> img` (`formatOccurrenceLocation(occurrence)` gives that line on its own); that notation is for reading, not a selector `document.querySelector()` takes. For a `.frames(true)` scan, format `results.topFrame` and each frame on its own: both functions throw a `TypeError` for the `{ topFrame, frames }` shape rather than report it as clean.
 
-...with Playwright's own raw diff still printed underneath (unavoidable — `toEqual` always includes it), but the readable summary now comes first, where it's actually useful. Deliberately a plain function, not a custom `expect` matcher — no dependency on any particular assertion library, so it works the same with Playwright's `expect`, Jest, Vitest, or a hand-rolled `if`/`throw`. Defaults to `fail`/`cantTell` outcomes (the ones that report findings; a `notApplicable` rule can carry one occurrence saying why it had nothing to judge, which is left out); pass `{ outcomes: [...] }` to narrow further. A thrown rule (`occurrences: []`, `error` set) is still surfaced using its `error` message rather than silently dropped.
+...with Playwright's own raw diff still printed underneath (unavoidable — `toEqual` always includes it), but the readable summary now comes first, where it's actually useful. Deliberately a plain function, not a custom `expect` matcher — no dependency on any particular assertion library, so it works the same with Playwright's `expect`, Jest, Vitest, or a hand-rolled `if`/`throw`. Defaults to `fail`/`cantTell` outcomes (the ones that report findings; a `notApplicable` rule can carry one occurrence saying why it had nothing to judge, which is left out); pass `{ outcomes: [...] }` to narrow further, by outcome or by review group (`'leanFail'`, `'leanPass'`, `'open'`), and `{ howToCheck: true }` to list each question's steps (see [below](#findings-that-need-review-leans-and-how-to-check)). An outcome it doesn't know throws a `TypeError`. A thrown rule (`occurrences: []`, `error` set) is still surfaced using its `error` message rather than silently dropped.
 
 ### Scanning every frame, including cross-origin iframes
 
@@ -288,6 +288,46 @@ first.occurrences[0].screenshot;
 
 The pictures are taken right after each frame's scan, before `.reportOnly()` trims the result, and combine with `.elementRef(true)`. Focus, hover, animations or content that loads late can still differ from what the scan saw. An option it can't use throws a `TypeError` with `code: 'INVALID_ENGINE_OPTIONS'` at the call, and so does `.analyze()` with `options({ output: { includeSelector: false } })`, since each element is found by its selector. Works in Chromium, Firefox and WebKit.
 
+### Findings that need review: leans and how to check
+
+A `cantTell` is a question for a person: the engine couldn't prove the answer from the page. With `@surea11y/core` 1.14, a question says more:
+
+- **Which way it leans.** Where the page's evidence points one way, the occurrence has a `lean`: `toward` (`'fail'` or `'pass'`), `why`, and sometimes a `caution` saying what could make it wrong. A skipped heading level leans fail; `aria-checked` on a native checkbox leans pass. A lean counted against the W3C ACT test cases on five cases or more also says how often it was right (`measured`). The outcome stays `cantTell` either way. See core's [`LEANS.md`](https://github.com/SureA11y/core/blob/main/docs/LEANS.md).
+- **How to check it.** Each question of a core rule carries `howToCheck`: `steps` starting from the element it names, and what a person sees if it passes (`passWhen`) or fails (`failWhen`), in the scan's locale. The engine in the page leaves them out; `.analyze()` adds them, with the steps of your packs' rules too.
+
+`formatFailures()` shows both: each question says beside its severity whether it likely fails, likely passes or needs review, then why, the caution, and with `{ howToCheck: true }` the steps:
+
+```
+2) heading-order (minor, likely fails): This heading jumps from level 1 to level 3, skipping a level.
+   at html > body > main > h3
+   Go down one level at a time, so an <h2> is followed by an <h3> rather than an <h4>, and the outline of the page stays easy to follow.
+   Why it likely fails: The heading skips a level after the one before it.
+   How to check:
+     1. Find the heading the report names and note its level and the previous heading's level (from the report or the Accessibility pane).
+     ...
+```
+
+To gate a test on the questions that likely fail as well as the failures, use `@surea11y/core`'s `leaningFailures(results)`, which works on this binding's results (a `.frames(true)` tree included). It leaves out the rules whose criteria are outside the scan's target, and with `{ wcagOnly: true }` the best-practice rules too:
+
+```js
+const { test, expect } = require('@playwright/test');
+const { leaningFailures } = require('@surea11y/core');
+const { A11yCoreBuilder, formatFailures } = require('@surea11y/playwright');
+
+test('no failures, and no questions that likely fail', async ({ page }) => {
+  await page.goto('https://example.com/');
+
+  const results = await new A11yCoreBuilder({ page }).analyze();
+  const failures = results.checksResults.filter((r) => r.outcome === 'fail');
+  expect(
+    [...failures, ...leaningFailures(results)],
+    formatFailures(results, { outcomes: ['fail', 'leanFail'] })
+  ).toEqual([]);
+});
+```
+
+Don't trim such a result with `.reportOnly(['fail'])` first: it drops the `cantTell` rules, and their leans with them. `.reportOnly()` filters whole rules by their outcome, while a rule's occurrences can sit in different tiers (`occurrenceOutcome`), which `formatFailures()` reads one by one. For CI reports, core's `renderJunitReport(results, { leanFailAs: 'failure' })` and `renderSarifReport(results, { leanFailAs: 'error' })` gate on the same findings, and both carry the steps.
+
 ### Web components: the internals hook
 
 Many web components keep their `ElementInternals` in a private field and name themselves, set their states or give themselves a role through it:
@@ -325,17 +365,18 @@ With it, the checkbox above passes, an unnamed component that attaches internals
 - **For test and audit runs.** The hook wraps `HTMLElement.prototype.attachInternals` (components get the same internals back), adds a stack frame to errors thrown through it, and keeps its record under a global symbol, where any script on the page can read every component's internals. That's why it's opt-in.
 - **Without it**, `.analyze()` says so once per scan when it asked about such components (`1 custom element was asked about because the scan could not read...`), and `getScanNotes()` gives that note as `kind: 'internals-hook'`.
 
-### Listeners added from script: the listener hook
+### Click handlers added from script: the listener hook
 
-The keyboard rules read inline handlers (`onclick="…"`) from the markup. Most apps add theirs from script, which no page script can list afterwards:
+Most pages add their click handlers from script, where no page script can list them afterwards:
 
-```js
-document.querySelector('#save').addEventListener('click', save); // on a <div role="button" tabindex="0">
+```html
+<div class="save" role="button" tabindex="0">Save</div>
+<script>
+  document.querySelector('.save').addEventListener('click', save);
+</script>
 ```
 
-The browser fires `click` from Enter and Space only on native controls, so this button does nothing from the keyboard. By default the scan can't see the listener, so it doesn't report the element.
-
-`A11yCoreBuilder.installListenerHook(pageOrContext)` (`@surea11y/core` 1.14.0 and later) installs core's opt-in hook, which records the click, key, focus and mouse listeners a page adds with `addEventListener` or an `onclick`-style property. Call it **before** `page.goto()`, as the internals hook; the two can be installed together:
+Enter and Space don't fire `click` on a `<div>`, so this button does nothing from the keyboard. Without help the scan can't see the listener, so `click-handler-keyboard-operable` doesn't report the element at all. `A11yCoreBuilder.installListenerHook(pageOrContext)` installs `@surea11y/core`'s opt-in listener hook (core 1.14.0 and later), which records the click, key, focus and mouse listeners a page adds, so the keyboard rules judge them. Call it **before** `page.goto()`, on the page or its browser context, as the internals hook:
 
 ```js
 const context = await browser.newContext();
@@ -344,44 +385,36 @@ const page = await context.newPage();
 await page.goto('https://example.com/');
 
 const results = await new A11yCoreBuilder({ page }).analyze();
-results.engine.environment.listenerHook; // 'early': the hook ran before the page's scripts
+results.engine.environment.listenerHook; // 'early'
 ```
 
-With it:
+With `@playwright/test`, install it in a `beforeEach` on the `context` fixture, or on `page` before the test navigates.
 
-- **The button above fails** `click-handler-keyboard-operable` (`CLICK_HANDLER_NO_KEY_LISTENER`): it's a focusable control with no key listener on it, inside it, above it, on the document or on the window. Once it listens for `keydown`, it passes.
-- **A key listener only above the element** (on an ancestor, the document or the window) is asked about: it may handle this element's keys, or only others'.
-- **A click listener on a container**, as a framework that delegates events from its root adds, makes no element inside it a candidate, so delegated handlers never fail.
-- **Pointer listeners** added from script are asked about by `mouse-only-event-handlers`, unless the element also has a keyboard equivalent.
+With it, the button above fails (`CLICK_HANDLER_NO_KEY_LISTENER`: no key listener anywhere a key event from it goes), and `mouse-only-event-handlers` and `widget-keyboard-focusable` count the listeners too. Only a hook installed before the page's scripts (`'early'`) proves a listener is missing; one installed later is `'late'`, and the rules then only ask. It wraps `addEventListener`, `removeEventListener` and the `on…` setters, with the page getting the same results and errors, and keeps its record under a global symbol: install it for test and audit runs. Without it, `getScanNotes()` gives a `'listener-hook'` note when findings it would have decided were judged without it. Core's [`INTEGRATION.md`](https://github.com/SureA11y/core/blob/main/docs/INTEGRATION.md#seeing-listeners-added-from-script-the-listener-hook) has the details, and its binding authors' guide the reason codes each hook decides.
 
-It works in Chromium, Firefox and WebKit.
+### Live regions: the live-region hook and announcements()
 
-- **Before the page loads.** Only a hook that ran before the page's scripts proves an element has no key listener. Called after `page.goto()`, it has no effect until the next navigation.
-- **For test and audit runs.** The hook wraps `addEventListener`, `removeEventListener` and the `on…` property setters (listeners themselves aren't wrapped, and run as before), and keeps its record under a global symbol. That's why it's opt-in.
-- **Without it**, `.analyze()` says so once per scan when it asked about an inline click or pointer handler whose keyboard equivalent may have been added from script (`1 element was asked about because the scan could not see...`), and `getScanNotes()` gives that note as `kind: 'listener-hook'`.
-
-### Status messages: the live-region hook
-
-A status message ("Saved", "3 results") reaches a screen reader when a live region's content changes while the screen reader can reach it (WCAG 4.1.3). A scan sees the page at one moment, after the message came, so by itself it can only judge the live regions that are there: `live-region-announcements` asks about one hidden from assistive technology with `aria-hidden` or `inert`, or left `aria-busy`.
-
-`A11yCoreBuilder.installLiveRegionHook(pageOrContext)` (`@surea11y/core` 1.14.0 and later) installs core's opt-in hook, which records what live regions are given from the load event on. Call it **before** `page.goto()`, as the other hooks. `A11yCoreBuilder.getAnnouncements(pageOrFrame)` then reads what the page made available to announce, in order:
+`A11yCoreBuilder.installLiveRegionHook(pageOrContext)` installs `@surea11y/core`'s opt-in live-region hook (core 1.14.0 and later), which records what the page's live regions are given while it runs. The scan then asks about a region added with its text already in it, and one shown and filled at once, which screen readers commonly don't announce. And `A11yCoreBuilder.announcements(page)` returns what the page made available to announce, so a test can check that an action told the user something:
 
 ```js
-await A11yCoreBuilder.installLiveRegionHook(page); // before goto
-await page.goto('https://example.com/');
-await page.getByRole('button', { name: 'Save' }).click();
+const { test, expect } = require('@playwright/test');
+const { A11yCoreBuilder } = require('@surea11y/playwright');
 
-await A11yCoreBuilder.getAnnouncements(page);
-// [{ text: 'Saved', politeness: 'polite', time: 1834 }]
+test.beforeEach(async ({ context }) => {
+  await A11yCoreBuilder.installLiveRegionHook(context); // before the test navigates
+});
 
-const results = await new A11yCoreBuilder({ page }).analyze();
-results.engine.environment.liveRegionHook; // 'early'
+test('saving says so', async ({ page }) => {
+  await page.goto('https://example.com/settings');
+  await page.getByRole('button', { name: 'Save' }).click();
+
+  const said = await A11yCoreBuilder.announcements(page);
+  // [{ text: 'Saved', politeness: 'polite', time: 1234.5, order: 7, behindModal: false, selector: '#status' }]
+  expect(said.map((a) => a.text)).toContain('Saved');
+});
 ```
 
-With it, `live-region-announcements` also asks about a region the page added with its text already in it (`LIVE_REGION_INSERTED_WITH_CONTENT`; `role="alert"` is left out, since an alert added that way is announced) and a hidden region shown and filled at once (`LIVE_REGION_SHOWN_AND_FILLED`), even if it has left the page since, like a toast.
-
-- **What it says.** `getAnnouncements()` is what the page made available to announce: the text a shown live region, reachable by assistive technology, was given. Not what a screen reader said, which depends on the screen reader. It returns `null` without the hook.
-- **For test and audit runs.** The hook only observes, with one `MutationObserver`, and keeps its record under a global symbol. That's why it's opt-in.
+Each entry names its region by `selector` (and `shadowHostSelectors` inside a shadow root; `null` for a region that has since left the page, such as a toast). It's `null` without the hook. A text given to a region behind an open modal dialog, which assistive technology did not get, is left out unless you pass `{ includeBehindModal: true }`, and comes marked `behindModal: true`. This is what the page made available to announce, not what a screen reader said. `announcements()` reads the page's top frame. The hook only observes, with one `MutationObserver`; see core's [`INTEGRATION.md`](https://github.com/SureA11y/core/blob/main/docs/INTEGRATION.md#seeing-what-live-regions-are-given-the-live-region-hook).
 
 ### Forced colors
 
@@ -513,7 +546,7 @@ Every occurrence already carries `selector` and (with `.elementRef(true)`, above
 
 ## TypeScript
 
-`src/A11yCoreBuilder.d.ts` (re-exported from `src/index.d.ts`, wired up via `package.json`'s `types` field) ships types for the whole builder API and the result (`A11yCoreResult`, `CheckResult`, `Occurrence`, `CompositeResult`, etc.). The result types are built on the ones `@surea11y/core` ships, so they carry every field the engine returns (`engine.version`, `engine.environment`, `contextMatch`, `skippedCustomRules`, `shadowHostSelectors`, `margin`, ...); this package adds `elementHandle`, `screenshot` (`OccurrenceScreenshot`) and the `.frames(true)` shape. `EngineError`/`EngineErrorCode`, `getScanGaps()`/`ScanGap`, `getScanNotes()`/`ScanNote` and `formatOccurrenceLocation()` are typed too, and so are `withWcag()` and `wcagLevel()` (`WcagVersion`, `WcagLevelInput`), `plannedChecks()`/`plannedCriteria()` (`PlannedCheck`, `PlannedCriterion`), the static `installInternalsHook()`, `installListenerHook()`, `installLiveRegionHook()` and `getAnnouncements()`, `withPacks()`, which takes a pack made with `definePack` (`PackLike`), and `.screenshots()` (`ScreenshotOptions`). Code that handles every `ScanGap` kind it knows and treats the rest in an `else` branch needs a branch for `'pack-skipped'`, which carries `pack` rather than `selectors`. `analyze()` is typed `Promise<A11yCoreResult | A11yCoreMultiFrameResult>` — narrow on `'topFrame' in results` (or cast, if you already know which mode you called) to get the specific shape back, since a fluent builder can't statically track that `.frames(true)` was called earlier in the chain. `playwright` is a `peerDependencies` entry (not just `devDependencies`) since the class's `page` argument and `Occurrence#elementHandle` both come from it — consumers need their own `playwright` install for the types to resolve, same as they already do to construct a `Page` in the first place.
+`src/A11yCoreBuilder.d.ts` (re-exported from `src/index.d.ts`, wired up via `package.json`'s `types` field) ships types for the whole builder API and the result (`A11yCoreResult`, `CheckResult`, `Occurrence`, `CompositeResult`, etc.). The result types are built on the ones `@surea11y/core` ships, so they carry every field the engine returns (`engine.version`, `engine.environment`, `contextMatch`, `skippedCustomRules`, `shadowHostSelectors`, `margin`, ...); this package adds `elementHandle`, `screenshot` (`OccurrenceScreenshot`) and the `.frames(true)` shape. `EngineError`/`EngineErrorCode`, `getScanGaps()`/`ScanGap`, `getScanNotes()`/`ScanNote` and `formatOccurrenceLocation()` are typed too, and so are `withWcag()` and `wcagLevel()` (`WcagVersion`, `WcagLevelInput`), `plannedChecks()`/`plannedCriteria()` (`PlannedCheck`, `PlannedCriterion`), the static `installInternalsHook()`, `installListenerHook()` and `installLiveRegionHook()` (each taking a `Page` or a `BrowserContext`) and `announcements(page)`, which resolves to `LocatedAnnouncement[] | null`, `formatFailures()`'s review groups (`ReviewGroup`) and `howToCheck` option, `withPacks()`, which takes a pack made with `definePack` (`PackLike`), and `.screenshots()` (`ScreenshotOptions`). Code that handles every `ScanGap` kind it knows and treats the rest in an `else` branch needs a branch for `'pack-skipped'`, which carries `pack` rather than `selectors`. `analyze()` is typed `Promise<A11yCoreResult | A11yCoreMultiFrameResult>` — narrow on `'topFrame' in results` (or cast, if you already know which mode you called) to get the specific shape back, since a fluent builder can't statically track that `.frames(true)` was called earlier in the chain. `playwright` is a `peerDependencies` entry (not just `devDependencies`) since the class's `page` argument and `Occurrence#elementHandle` both come from it — consumers need their own `playwright` install for the types to resolve, same as they already do to construct a `Page` in the first place.
 
 ## What changes with `@surea11y/core` 1.14
 
@@ -522,12 +555,14 @@ With `@surea11y/core` 1.14.0, what a scan through this binding shows differently
 - **Style sheets from another origin are checked.** `.analyze()` fetches, from Node, the style sheets the page can't read and core checks them, so `css-orientation-lock` finds a lock in a CDN's CSS instead of asking (`.fetchStyleSheets(false)` turns it off). [More](#style-sheets-from-another-origin).
 - **Criteria are `notApplicable` only where the rules see every case.** A WCAG rollup whose rules all found nothing is now `cantTell` (`reasonCode` `composite.rollup.cantTell.partialCoverage`), except for 1.3.5, 2.4.3, 2.4.4, 2.4.7, 2.4.9, 2.5.3, 2.5.8, 3.3.2 and 4.1.1, whose rules find every link, field, focusable element, target or id. A gate that asserted a criterion `notApplicable` now sees `cantTell`.
 - **New checks.** `click-handler-keyboard-operable` (2.1.1, 2.1.3) fails an inline `onclick` on an element the keyboard can't reach, and asks about one that has no key handler. `moving-content-pausable` (2.2.2) asks about content that moves by itself for more than five seconds.
-- **Listeners added from script.** With [`installListenerHook()`](#listeners-added-from-script-the-listener-hook), `click-handler-keyboard-operable` judges a click listener added with `addEventListener` as an inline `onclick`, and fails a focusable control that no key listener can reach (`CLICK_HANDLER_NO_KEY_LISTENER`); `mouse-only-event-handlers` asks about pointer listeners added from script. Both rules' messages now say "click handler" rather than "onclick handler".
-- **Status messages.** `live-region-announcements` (4.1.3) asks about a live region hidden with `aria-hidden` or `inert`, or left `aria-busy`. With [`installLiveRegionHook()`](#status-messages-the-live-region-hook) it also asks about one added with its text or shown and filled at once, and `getAnnouncements()` reads what the page made available to announce.
+- **Listeners added from script.** With [`installListenerHook()`](#click-handlers-added-from-script-the-listener-hook), `click-handler-keyboard-operable` judges a click listener added with `addEventListener` as an inline `onclick`, and fails a focusable control that no key listener can reach (`CLICK_HANDLER_NO_KEY_LISTENER`); `mouse-only-event-handlers` asks about pointer listeners added from script. Both rules' messages now say "click handler" rather than "onclick handler".
+- **Status messages.** `live-region-announcements` (4.1.3) asks about a live region hidden with `aria-hidden` or `inert`, or left `aria-busy`. With [`installLiveRegionHook()`](#live-regions-the-live-region-hook-and-announcements) it also asks about one added with its text or shown and filled at once, and `announcements()` reads what the page made available to announce.
 - **Roles that depend on context.** `aria-allowed-attr` no longer fails `aria-expanded` on a text input whose `list` names a `<datalist>` (a combobox), and now judges `<td>`: `cell` in a table, `gridcell` in a grid. `label-in-name` checks a `<td>` in a grid. `heading-order` and `page-has-heading-one` count a heading marked `role="none"` that can take focus or has a global ARIA attribute, as browsers do.
 - **Placeholders below the contrast ratio fail** when the page chose their colours; in the browser's own colours they pass. They used to be questions.
 - **More questions in some places**, fewer in others: `css-hidden-focus` asks about a link in a closed off-canvas menu or a container clipped to nothing; contrast is measured over solid backgrounds, empty background layers, `::before` strips and drop shadows it used to ask about; `link-name-quality` knows more French generic phrases.
-- **Some reason codes are split by cause**, so a baseline entry for one of those findings comes back once as new: `LIST_ITEM_ROLE_OVERRIDDEN`, `LIST_ROLE_OVERRIDDEN`, `DUPLICATE_ID_IN_SHADOW_TREE`, `DEFAULT_LANG_INVALID`, `IMAGE_ONLY_CONTROL_CONTENT`, `HEADING_LIKE_NUMBER`, `HEADING_LIKE_LINK`.
+- **Questions lean, and say how to answer them.** A `cantTell` occurrence can carry a `lean` (which way the evidence points, and why) and carries `howToCheck` (the steps to answer it), which `.analyze()` adds. `formatFailures()` lists findings in the order a review takes and shows both. [More](#findings-that-need-review-leans-and-how-to-check).
+- **Two more opt-in hooks.** `A11yCoreBuilder.installListenerHook(pageOrContext)` lets the keyboard rules see click handlers added from script, and `A11yCoreBuilder.installLiveRegionHook(pageOrContext)` records what live regions are given, which `A11yCoreBuilder.announcements(page)` returns. [More](#click-handlers-added-from-script-the-listener-hook).
+- **Some reason codes are split by cause** (`LIST_ITEM_ROLE_OVERRIDDEN`, `LIST_ROLE_OVERRIDDEN`, `DUPLICATE_ID_IN_SHADOW_TREE`, `DEFAULT_LANG_INVALID`, `IMAGE_ONLY_CONTROL_CONTENT`, `HEADING_LIKE_NUMBER`, `HEADING_LIKE_LINK`). Core's baselines still match a 1.13 entry to its finding under the new code, and `migrateBaselineEntries()` rewrites a baseline; see core's [`BASELINE.md`](https://github.com/SureA11y/core/blob/main/docs/BASELINE.md#upgrading).
 
 ## What changes with `@surea11y/core` 1.12
 

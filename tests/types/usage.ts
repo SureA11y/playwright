@@ -29,8 +29,12 @@ async function main(): Promise<void> {
   await A11yCoreBuilder.installListenerHook(page);
   await A11yCoreBuilder.installListenerHook(context);
   await A11yCoreBuilder.installLiveRegionHook(page);
-  const said = await A11yCoreBuilder.getAnnouncements(page);
-  const texts: string[] = (said || []).map((a) => `${a.politeness}: ${a.text}`);
+  await A11yCoreBuilder.installLiveRegionHook(context);
+  const said = await A11yCoreBuilder.announcements(page, { includeBehindModal: true });
+  const regions: Array<string | null> = (said ?? []).map((a) => a.selector);
+  void regions;
+  const review: string = formatFailures([], { outcomes: ['fail', 'leanFail'], howToCheck: true });
+  void review;
   const planned = new A11yCoreBuilder({ page }).withWcag('2.2', 'aa').wcagLevel('aa');
   const plannedIds: string[] = planned.plannedChecks().map((c) => c.ruleId).concat(planned.plannedCriteria().map((r) => r.id));
   void plannedIds;
