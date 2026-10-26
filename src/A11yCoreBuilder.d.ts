@@ -25,7 +25,9 @@ import type {
   Margin,
   MarginDeclaration,
   ContextMatch,
-  CompositeResult
+  CompositeResult,
+  Lean,
+  HowToCheck
 } from '@surea11y/core';
 
 export type {
@@ -44,7 +46,9 @@ export type {
   Margin,
   MarginDeclaration,
   ContextMatch,
-  CompositeResult
+  CompositeResult,
+  Lean,
+  HowToCheck
 };
 
 /**

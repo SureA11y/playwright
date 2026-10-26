@@ -14,6 +14,8 @@ import {
   type A11yCoreMultiFrameResult,
   type CheckResult,
   type EngineErrorCode,
+  type HowToCheck,
+  type Lean,
   type Occurrence,
   type ScanGap,
   getGatingFailures,
@@ -35,6 +37,10 @@ async function main(): Promise<void> {
   void regions;
   const review: string = formatFailures([], { outcomes: ['fail', 'leanFail'], howToCheck: true });
   void review;
+  const question = {} as Occurrence;
+  const lean: Lean | undefined = question.lean;
+  const steps: HowToCheck | undefined = question.howToCheck;
+  void [lean, steps];
   const planned = new A11yCoreBuilder({ page }).withWcag('2.2', 'aa').wcagLevel('aa');
   const plannedIds: string[] = planned.plannedChecks().map((c) => c.ruleId).concat(planned.plannedCriteria().map((r) => r.id));
   void plannedIds;
