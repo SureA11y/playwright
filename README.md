@@ -534,7 +534,7 @@ A pack's own rules appear in `checksResults` like core's, with ids that start wi
 
 ### Style sheets from another origin
 
-A page's script can't read the rules of a style sheet served from another origin (a CDN, a fonts service), so a check that reads the CSS, such as `css-orientation-lock`, can't tell whether it holds an orientation lock and asks about it. With `@surea11y/core` 1.14.0 or later, `.analyze()` asks the page which sheets it can't read, fetches them from Node with the page's own request API (so the page's cookies go with them), and gives core their text, which it then checks. It's on by default, as axe fetches such sheets; each request is given up after five seconds, and a sheet that can't be fetched leaves the check asking as before. To send no request but the page's own:
+A page's script can't read the rules of a style sheet served from another origin (a CDN, a fonts service), so a check that reads the CSS, such as `css-orientation-lock`, can't tell whether it holds an orientation lock and asks about it. With `@surea11y/core` 1.14.0 or later, `.analyze()` asks the page which sheets it can't read, fetches them from Node with the page's own request API (so the page's cookies go with them), and gives core their text, which it then checks. It's on by default; each request is given up after five seconds, and a sheet that can't be fetched leaves the check asking as before. To send no request but the page's own:
 
 ```js
 await new A11yCoreBuilder({ page }).fetchStyleSheets(false).analyze();
