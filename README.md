@@ -99,7 +99,7 @@ const gaps = getScanGaps(results);
 //    message: 'Nothing was scanned: the scan scope matched no element ("#main").' }]
 ```
 
-Each gap has a `kind`: `'context-not-found'` (nothing was scanned), `'context-partly-not-found'` (some of several selectors matched nothing), `'custom-rule-skipped'` (a custom rule the engine could not run, one per rule, from `results.skippedCustomRules`; one you excluded yourself with `.disableRules()` is not a gap), or `'pack-skipped'` (a pack that did not run, one per pack, from `results.skippedPacks`; see [Scanning with packs](#scanning-with-packs-standards-checklists-and-your-own-rules)).
+Each gap has a `kind`: `'context-not-found'` (nothing was scanned), `'context-partly-not-found'` (some of several selectors matched nothing), `'custom-rule-skipped'` (a custom rule the engine could not run, one per rule, from `results.skippedCustomRules`; one you excluded yourself with `.disableRules()` is not a gap), `'pack-skipped'` (a pack that did not run, one per pack, from `results.skippedPacks`; see [Scanning with packs](#scanning-with-packs-standards-checklists-and-your-own-rules)), or `'profile-not-run'` (a profile a scan of several did not run, one per profile, from `results.engine.profilesNotRun`; `@surea11y/core` 1.15 and later).
 
 `.analyze()` also prints each gap with `console.warn`, once per scanned frame, prefixed with the frame's URL, for example `@surea11y/playwright (https://example.com/): Nothing was scanned: the scan scope matched no element ("#main").` The engine warns too, but in the page's console, which a Playwright run doesn't show. The warning doesn't fail anything: to fail a test on a gap, assert on `getScanGaps(results)` as below.
 
@@ -525,6 +525,24 @@ results.engine.profile; // 'acme-web-2026'
 // A checklist's items, each one result, beside core's WCAG rollups:
 results.rulesResults.filter((r) => r.meta && r.meta.standard === 'Acme web policy');
 ```
+
+**Several profiles at once.** `.options({ profile })` also takes a list, a pack's profile beside WCAG's or another pack's (`@surea11y/core` 1.15 and later). Each profile judges the page as it would alone, and the result reads as one profile with the rules of all, in the top frame and in each frame with `.frames(true)`:
+
+```js
+const waiAria = require('@surea11y/pack-wai-aria');
+
+const results = await new A11yCoreBuilder({ page })
+  .withPacks(waiAria)
+  .options({ profile: ['wcag22-aa', 'wai-aria-1.2'] })
+  .analyze();
+
+results.engine.profiles; // ['wcag22-aa', 'wai-aria-1.2']
+// A rule both run is one check: its outcome is the worst, and its verdicts
+// say what each profile makes of it.
+results.checksResults.find((c) => c.ruleId === 'aria-allowed-attr').verdicts;
+```
+
+A profile that didn't run is in `results.engine.profilesNotRun`, with why, and `getScanGaps()` reports it as `'profile-not-run'`. Core's [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md#several-profiles) has the whole result.
 
 A pack's own rules appear in `checksResults` like core's, with ids that start with its namespace (`acme-no-autoplay`). Without its profile, a pack's rules run only when selected, with `.withRules()` or by a tag. `@surea11y/core`'s HTML, SARIF and JUnit reports show a standard's or a checklist's items in a section of their own. Pass an array, or call `.withPacks()` again, to scan with several packs.
 
