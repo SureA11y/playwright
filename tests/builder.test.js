@@ -912,7 +912,24 @@ test('A11yCoreBuilder: withTags()/withRules()/disableTags()/disableRules() throw
   }
 });
 
-test('A11yCoreBuilder: include() with frames(true) scopes the top frame only -- each sub-frame is scanned whole', async () => {
+// How .frames(true) reads frames as core does needs binding-base's frames
+// helpers and a core that takes engineOptions.embeddedAriaHidden.
+const FRAME_POLICY = (() => {
+  if (typeof require('@surea11y/binding-base').readFrameElement !== 'function') {
+    return 'needs a binding-base with the frames helpers';
+  }
+  try {
+    require('@surea11y/core/testing').runa11yCoreOnHtml('<p>x</p>', {
+      engineOptions: { embeddedAriaHidden: true, strictOptions: true },
+      runOnly: ['img-alt-present']
+    });
+    return false;
+  } catch {
+    return 'needs a core that takes embeddedAriaHidden';
+  }
+})();
+
+test('A11yCoreBuilder: include() with frames(true) scopes the top frame and which of its frames are scanned -- each scanned whole', { skip: FRAME_POLICY }, async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
@@ -921,8 +938,11 @@ test('A11yCoreBuilder: include() with frames(true) scopes the top frame only -- 
     // the sub-frame would hide its missing alt.
     await page.goto(
       'data:text/html,<html><body>' +
-      '<main id="main"><img src="a.png" alt="A"></main><img src="outside.png">' +
-      '<iframe srcdoc="%3Chtml%3E%3Cbody%3E%3Cimg src=x.png%3E%3C/body%3E%3C/html%3E"></iframe>' +
+      '<main id="main"><img src="a.png" alt="A">' +
+      '<iframe srcdoc="%3Chtml%3E%3Cbody%3E%3Cimg src=x.png%3E%3C/body%3E%3C/html%3E"></iframe></main>' +
+      '<img src="outside.png">' +
+      // Outside include()'s roots: left out, as core's own scan across frames leaves it.
+      '<iframe srcdoc="%3Chtml%3E%3Cbody%3E%3Cimg src=y.png%3E%3C/body%3E%3C/html%3E"></iframe>' +
       '</body></html>'
     );
     await page.waitForLoadState('networkidle').catch(() => {});
@@ -939,6 +959,38 @@ test('A11yCoreBuilder: include() with frames(true) scopes the top frame only -- 
     assert.strictEqual(results.frames[0].contextMatch, null);
     const frameImg = results.frames[0].checksResults.find((r) => r.ruleId === 'img-alt-present');
     assert.strictEqual(frameImg.outcome, 'fail');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('A11yCoreBuilder: frames(true) reads frames as core does -- hidden, excluded and empty ones left out, an aria-hidden one scanned as aria-hidden, each under its own url', { skip: FRAME_POLICY }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    const doc = (body) => `<html><body>${body}</body></html>`.replace(/"/g, '&quot;');
+    await page.setContent(
+      '<html><body>' +
+      `<iframe id="hid" style="display:none" srcdoc="${doc('<img src=a.png>')}"></iframe>` +
+      `<div class="ad"><iframe id="exc" srcdoc="${doc('<img src=a.png>')}"></iframe></div>` +
+      `<div aria-hidden="true"><iframe id="ah" srcdoc="${doc('<img src=a.png><button></button>')}"></iframe></div>` +
+      '<iframe id="empty"></iframe>' +
+      `<iframe id="vis" srcdoc="${doc('<img src=a.png>')}"></iframe>` +
+      '</body></html>'
+    );
+    await page.waitForLoadState('networkidle').catch(() => {});
+
+    const results = await new A11yCoreBuilder({ page, url: 'https://example.test/top' })
+      .exclude('.ad')
+      .frames(true)
+      .analyze();
+    assert.strictEqual(results.topFrame.url, 'https://example.test/top');
+    assert.strictEqual(results.frames.length, 2, JSON.stringify(results.frames.map((f) => f.url)));
+    const fails = (f) => f.checksResults.filter((r) => r.outcome === 'fail').map((r) => r.ruleId);
+    const [ah, vis] = results.frames;
+    assert.ok(!fails(ah).includes('img-alt-present'), 'out of the accessibility tree, a name is no rule');
+    assert.ok(fails(vis).includes('img-alt-present'));
+    assert.ok(results.frames.every((f) => f.url !== 'https://example.test/top'), 'a frame keeps its own url');
   } finally {
     await browser.close();
   }
