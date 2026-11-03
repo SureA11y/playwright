@@ -9,7 +9,7 @@ npm install @surea11y/core @surea11y/playwright playwright
 npx playwright install chromium   # every test launches a real browser -- npm install alone doesn't fetch it
 ```
 
-`@surea11y/core` 1.12.0 or later, the engine, comes with the binding as a regular dependency, so a project that doesn't list it still works. List it in your own `package.json` too, as the line above does: your project and the binding then share one copy, so whatever you do with core directly, writing a SARIF log or an HTML report (`@surea11y/core/sarif`, `/report`), reading the rule catalogue or keeping a baseline, reads results with the same core that produced them. When your core can't match the binding's range, as with a linked checkout (`file:../core`) or a fork, add `"overrides": { "@surea11y/core": "$@surea11y/core" }` beside it.
+`@surea11y/core` 1.14.0 or later, the engine, comes with the binding as a regular dependency, so a project that doesn't list it still works. List it in your own `package.json` too, as the line above does: your project and the binding then share one copy, so whatever you do with core directly, writing a SARIF log or an HTML report (`@surea11y/core/sarif`, `/report`), reading the rule catalogue or keeping a baseline, reads results with the same core that produced them. When your core can't match the binding's range, as with a linked checkout (`file:../core`) or a fork, add `"overrides": { "@surea11y/core": "$@surea11y/core" }` beside it.
 
 **Coming in 2.0:** core becomes a peer dependency, so the binding will no longer install it for you, and the `overrides` entry is no longer needed. Add `@surea11y/core` to your `package.json` now and 2.0 needs no change.
 
@@ -39,7 +39,7 @@ await browser.close();
 
 `results` is `@surea11y/core`'s own native result shape — see its [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md) — not the `violations`/`passes`/`incomplete`/`inapplicable` shape used by other popular accessibility testing tools. The builder's *method names* are modeled on common conventions in this space for migration familiarity; the richer result schema is kept as-is.
 
-Every result says which `@surea11y/core` release produced it, in `results.engine.version` (for example `"1.12.0"`): quote it in a bug report, and compare it when two runs disagree. From 1.4.0 this package needs `@surea11y/core` 1.12.0 or later; see [What changes with `@surea11y/core` 1.12](#what-changes-with-surea11ycore-112).
+Every result says which `@surea11y/core` release produced it, in `results.engine.version` (for example `"1.12.0"`): quote it in a bug report, and compare it when two runs disagree. From 1.5.0 this package needs `@surea11y/core` 1.14.0 or later; see [What changes with `@surea11y/core` 1.14](#what-changes-with-surea11ycore-114).
 
 Also see `examples/basic-scan.js` for a runnable script (`npm run example -- <url>`).
 
@@ -159,9 +159,9 @@ test('page has no accessibility violations', async ({ page }) => {
 });
 ```
 
-To also fail when the scan left something out (an `.include()` that matched nothing, a custom rule or a pack that didn't run), assert on `getScanGaps(results)` too: `expect(getScanGaps(results), formatFailures(results)).toEqual([])`.
+To also fail when the scan left something out (an `.include()` that matched nothing, a custom rule, a pack or a profile that didn't run), assert on `getScanGaps(results)` too: `expect(getScanGaps(results), formatFailures(results)).toEqual([])`.
 
-See `examples/playwright-test-example.spec.js` for a fuller, runnable version (`npm run example:e2e`) — one test proving real violations get caught (unlabeled button, missing `alt`), one proving a well-formed page passes cleanly.
+See `examples/playwright-test-example.spec.js` for a fuller, runnable version (`npm run example:e2e`) — one test proving real violations get caught (unlabeled button, missing `alt`), one proving a well-formed page passes cleanly, and one gating a page on a pack's checklist.
 
 ### Failing only on serious problems
 
@@ -209,7 +209,7 @@ for (const frame of results.frames) {
 }
 ```
 
-Unlike script-injection-based accessibility tools (which need a `postMessage`-based protocol to reach cross-origin iframes, since they're injected as a plain `<script>` fully subject to the browser's same-origin policy), this needs no extra engine support at all — Playwright drives every frame via CDP at the automation-process level, so cross-origin `frame.evaluate()` already just works. Default off, so plain `.analyze()` is unaffected unless you opt in.
+Unlike script-injection-based accessibility tools (which need a `postMessage`-based protocol to reach cross-origin iframes, since they're injected as a plain `<script>` fully subject to the browser's same-origin policy), this needs no extra engine support at all — Playwright drives every frame from the automation process, through its own browser protocol, so cross-origin `frame.evaluate()` already just works. Default off, so plain `.analyze()` is unaffected unless you opt in.
 
 `results.frames` is a flat list of every sub-frame, however deeply nested. A frame that couldn't be scanned (it detached or navigated away mid-scan, or is sandboxed against scripts) is an entry `{ url, error }` instead of a result, so check for `error` before reading `checksResults`.
 
@@ -223,7 +223,9 @@ const results = await new A11yCoreBuilder({ page }).frames(true).analyze();
 fs.writeFileSync('a11y.sarif', renderSarifReport(results));
 ```
 
-`.include()` scopes the top frame only: each sub-frame is scanned whole, as `@surea11y/core`'s own `runa11yCoreAcrossFrames` does. (A sub-frame rarely holds the element the top frame's selector names, and since core 1.10.0 a selector that matches nothing scans nothing.) `.exclude()` applies in every frame. An `EngineError` (above) rejects the whole scan, since the top frame is scanned first with the same rule and tag lists.
+`.include()` scopes the top frame only: each sub-frame inside its roots is scanned whole, as `@surea11y/core`'s own `runa11yCoreAcrossFrames` does. (A sub-frame rarely holds the element the top frame's selector names, and since core 1.10.0 a selector that matches nothing scans nothing.) `.exclude()` applies in every frame. An `EngineError` (above) rejects the whole scan, since the top frame is scanned first with the same rule and tag lists.
+
+Which frames are scanned, and how, also follows `runa11yCoreAcrossFrames` (`@surea11y/binding-base` 1.7.0 and later). A frame the page doesn't show, or that an open modal dialog covers, unless `.options({ includeHiddenElements: true })`, a frame in content `.exclude()` leaves out, a frame of the top page outside the `.include()` roots, a frame in a shadow root with `.options({ includeShadowDom: false })`, and a frame whose document shows nothing (an empty `about:blank`) are left out of `results.frames`, with the frames inside them. A frame under `aria-hidden="true"` is scanned as aria-hidden content, where names and roles don't apply and contrast, focus and keyboard still do, and one under `inert` only for how it looks; a frame inside one is read the same way (`@surea11y/core` 1.15 and later). The elements around a frame are read through slots and shadow hosts, as the accessibility tree reads them. Each sub-frame's result is named by its own `url`; a `url` given to the constructor names the top frame only.
 
 ### Trimming the result to just violations
 
@@ -564,7 +566,7 @@ Every occurrence already carries `selector` and (with `.elementRef(true)`, above
 
 ## TypeScript
 
-`src/A11yCoreBuilder.d.ts` (re-exported from `src/index.d.ts`, wired up via `package.json`'s `types` field) ships types for the whole builder API and the result (`A11yCoreResult`, `CheckResult`, `Occurrence`, `CompositeResult`, etc.). The result types are built on the ones `@surea11y/core` ships, so they carry every field the engine returns (`engine.version`, `engine.environment`, `contextMatch`, `skippedCustomRules`, `shadowHostSelectors`, `margin`, ...); this package adds `elementHandle`, `screenshot` (`OccurrenceScreenshot`) and the `.frames(true)` shape. `EngineError`/`EngineErrorCode`, `getScanGaps()`/`ScanGap`, `getScanNotes()`/`ScanNote` and `formatOccurrenceLocation()` are typed too, and so are `withWcag()` and `wcagLevel()` (`WcagVersion`, `WcagLevelInput`), `plannedChecks()`/`plannedCriteria()` (`PlannedCheck`, `PlannedCriterion`), the static `installInternalsHook()`, `installListenerHook()` and `installLiveRegionHook()` (each taking a `Page` or a `BrowserContext`) and `announcements(page)`, which resolves to `LocatedAnnouncement[] | null`, `formatFailures()`'s review groups (`ReviewGroup`) and `howToCheck` option, `withPacks()`, which takes a pack made with `definePack` (`PackLike`), and `.screenshots()` (`ScreenshotOptions`). Code that handles every `ScanGap` kind it knows and treats the rest in an `else` branch needs a branch for `'pack-skipped'`, which carries `pack` rather than `selectors`. `analyze()` is typed `Promise<A11yCoreResult | A11yCoreMultiFrameResult>` — narrow on `'topFrame' in results` (or cast, if you already know which mode you called) to get the specific shape back, since a fluent builder can't statically track that `.frames(true)` was called earlier in the chain. `playwright` is a `peerDependencies` entry (not just `devDependencies`) since the class's `page` argument and `Occurrence#elementHandle` both come from it — consumers need their own `playwright` install for the types to resolve, same as they already do to construct a `Page` in the first place.
+`src/A11yCoreBuilder.d.ts` (re-exported from `src/index.d.ts`, wired up via `package.json`'s `types` field) ships types for the whole builder API and the result (`A11yCoreResult`, `CheckResult`, `Occurrence`, `CompositeResult`, etc.). The result types are built on the ones `@surea11y/core` ships, so they carry every field the engine returns (`engine.version`, `engine.environment`, `contextMatch`, `skippedCustomRules`, `shadowHostSelectors`, `margin`, ...); this package adds `elementHandle`, `screenshot` (`OccurrenceScreenshot`) and the `.frames(true)` shape. `EngineError`/`EngineErrorCode`, `getScanGaps()`/`ScanGap`, `getScanNotes()`/`ScanNote` and `formatOccurrenceLocation()` are typed too, and so are `withWcag()` and `wcagLevel()` (`WcagVersion`, `WcagLevelInput`), `plannedChecks()`/`plannedCriteria()` (`PlannedCheck`, `PlannedCriterion`), the static `installInternalsHook()`, `installListenerHook()` and `installLiveRegionHook()` (each taking a `Page` or a `BrowserContext`) and `announcements(page)`, which resolves to `LocatedAnnouncement[] | null`, `formatFailures()`'s review groups (`ReviewGroup`) and `howToCheck` option, `withPacks()`, which takes a pack made with `definePack` (`PackLike`), and `.screenshots()` (`ScreenshotOptions`). Code that handles every `ScanGap` kind it knows and treats the rest in an `else` branch needs a branch for `'pack-skipped'`, which carries `pack` rather than `selectors`, and one for `'profile-not-run'`, which carries `profile`. `analyze()` is typed `Promise<A11yCoreResult | A11yCoreMultiFrameResult>` — narrow on `'topFrame' in results` (or cast, if you already know which mode you called) to get the specific shape back, since a fluent builder can't statically track that `.frames(true)` was called earlier in the chain. `playwright` is a `peerDependencies` entry (not just `devDependencies`) since the class's `page` argument and `Occurrence#elementHandle` both come from it — consumers need their own `playwright` install for the types to resolve, same as they already do to construct a `Page` in the first place.
 
 ## What changes with `@surea11y/core` 1.14
 
@@ -583,7 +585,7 @@ With `@surea11y/core` 1.14.0, what a scan through this binding shows differently
 
 ## What changes with `@surea11y/core` 1.12
 
-This release needs `@surea11y/core` 1.12.0. What a scan through this binding shows differently (core's [`CHANGELOG.md`](https://github.com/SureA11y/core/blob/main/CHANGELOG.md) has the full list):
+From 1.4.0 this package needs `@surea11y/core` 1.12.0. What a scan through this binding shows differently (core's [`CHANGELOG.md`](https://github.com/SureA11y/core/blob/main/CHANGELOG.md) has the full list):
 
 - **An empty heading now fails an unscoped scan.** `empty-heading` used to ask about a heading with no accessible name; it now fails it. It's a best practice, so it runs in a scan that selects nothing and with `.withBestPractices()`, not under `.withWcag()`, tags or a profile. A gate on a page with `<h2></h2>` that asserted no failures now fails: fix the heading, or scan a WCAG target.
 - **Scans that pick rules report their criteria.** `.withRules('img-alt-present')`, a non-WCAG tag or `.withBestPractices()` now fill `rulesResults` with the WCAG criteria those rules belong to, where it was empty. A criterion whose other rules weren't selected is `cantTell` (`reasonCode` `composite.rollup.cantTell.notSelectedChild`), and each check's `rollupIds` names the criteria it was added for. `.wcagLevel()` keeps those criteria to a level.

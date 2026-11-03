@@ -16,7 +16,7 @@ const {
 } = bindingBase;
 const frameEngineOptions = bindingBase.frameEngineOptions || ((engineOptions) => engineOptions);
 // What a frame is under, with what the frames around it are under
-// (binding-base 1.8 and later; aria-hidden and inert alike).
+// (binding-base 1.7 and later; aria-hidden and inert alike).
 const inheritFrameReading = bindingBase.inheritFrameReading || ((above, reading) => ({
   ariaHidden: !!((above && above.ariaHidden) || (reading && reading.ariaHidden)),
   inert: !!((above && above.inert) || (reading && reading.inert))
@@ -94,10 +94,11 @@ const findOccurrenceElement = eval(`(args) => {
  * // results.topFrame        -- same shape as the single-frame case above
  * // results.frames          -- array of the same native result shape, one per sub-frame
  *
- * include() scopes the top frame only; every sub-frame is scanned whole.
+ * include() scopes the top frame only; every sub-frame inside its roots is
+ * scanned whole, and a hidden, excluded or empty frame is left out.
  *
  * Unlike script-injection-based accessibility engines (which need a
- * postMessage-based protocol, runPartial/finishRun, to reach cross-origin
+ * postMessage-based protocol to reach cross-origin
  * iframes, since they're injected as a plain <script> and are fully subject
  * to the browser's same-origin policy), this doesn't need any @surea11y/core
  * engine support: Playwright
