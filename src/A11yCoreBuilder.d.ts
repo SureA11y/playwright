@@ -211,7 +211,7 @@ export class A11yCoreBuilder {
   withTags(tags: string | string[]): this;
   /** Never run rules carrying any of these tags (applied after withTags). */
   disableTags(tags: string | string[]): this;
-  /** Only run these specific rule IDs (accepts with or without the  prefix). */
+  /** Only run these specific rule IDs (accepts with or without the `a11ycore-` prefix). */
   withRules(ruleIds: string | string[]): this;
   /** Never run these specific rule IDs (applied after withRules). */
   disableRules(ruleIds: string | string[]): this;
@@ -335,8 +335,9 @@ export function getGatingFailures(
  * pass over as clean: an include() scope that matched no element
  * (`context-not-found`, nothing was scanned), some include() selectors that
  * matched nothing (`context-partly-not-found`), each custom rule that did
- * not run (`custom-rule-skipped`), and each pack that did not run
- * (`pack-skipped`). Each gap has a `message`. Throws a
+ * not run (`custom-rule-skipped`), each pack that did not run
+ * (`pack-skipped`), and each profile a scan of several did not run
+ * (`profile-not-run`). Each gap has a `message`. Throws a
  * TypeError for a frames(true) result: call it on `topFrame` and on each
  * scanned frame.
  */
@@ -347,8 +348,10 @@ export type { ScanGap, OccurrenceLocation } from '@surea11y/binding-base';
  * How the page was scanned, which a gap doesn't cover: `forced-colors` when
  * the page was shown in forced colors, `internals-hook` when the scan
  * asked about web components it could have read with the internals hook,
- * and `listener-hook` when it asked about click or pointer handlers whose
- * keyboard equivalent the listener hook would have let it see.
+ * `listener-hook` when it asked about click or pointer handlers whose
+ * keyboard equivalent the listener hook would have let it see, and
+ * `live-region-hook` when it judged live regions the live-region hook would
+ * have let it see.
  */
 export { getScanNotes } from '@surea11y/binding-base';
 export type { ScanNote } from '@surea11y/binding-base';
