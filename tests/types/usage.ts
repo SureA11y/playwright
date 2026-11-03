@@ -111,7 +111,8 @@ async function main(): Promise<void> {
       const id: string | null = gap.rule.id;
     } else if (gap.kind === 'pack-skipped') {
       const name: string | null = gap.pack.name;
-    } else {
+    } else if ('selectors' in gap) {
+      // A gap of a kind added later, such as profile-not-run, has no selectors.
       const selectors: string[] = gap.selectors;
     }
   }
