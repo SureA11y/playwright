@@ -1,6 +1,6 @@
 {
   "name": "@surea11y/playwright",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Accessibility (a11y, WCAG) checks for Playwright tests: scan the live page with new A11yCoreBuilder({ page }).analyze() and get only proven violations, with findings that need human review listed separately.",
   "keywords": [
     "accessibility",
@@ -46,8 +46,8 @@
     "LICENSE"
   ],
   "dependencies": {
-    "@surea11y/binding-base": "^1.6.0",
-    "@surea11y/core": "^1.14.0"
+    "@surea11y/binding-base": "^1.7.0",
+    "@surea11y/core": "^1.15.0"
   },
   "peerDependencies": {
     "playwright": ">=1.0.0"
