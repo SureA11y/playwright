@@ -46,7 +46,7 @@
     "LICENSE"
   ],
   "dependencies": {
-    "@surea11y/binding-base": "^1.7.0",
+    "@surea11y/binding-base": "^1.8.0",
     "@surea11y/core": "^1.15.0"
   },
   "peerDependencies": {
